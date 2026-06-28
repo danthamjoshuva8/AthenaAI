@@ -43,10 +43,20 @@ class MovingAverageStrategy:
         )
 
         df = pd.DataFrame([
-
             {
+
                 "date": x.date,
-                "close": x.close
+
+                "open": x.open,
+
+                "high": x.high,
+
+                "low": x.low,
+
+                "close": x.close,
+
+                "volume": x.volume
+
             }
 
             for x in records
@@ -98,43 +108,179 @@ class MovingAverageStrategy:
 
         signals = []
 
+        in_position = False
+
+        pending_entry = False
+
+        support_high = None
+
+        support_candle_count = 0
+
+        max_breakout_wait = 5
+
+        # Maximum distance allowed from MA15
+        pullback_percent = 1.5
+
         for _, row in df.iterrows():
 
             signal = "HOLD"
 
-            # Not enough data for all 3 moving averages
+            ma15 = row["MA15"]
+            ma30 = row["MA30"]
+            ma150 = row["MA150"]
+
+            distance_from_ma = None
+            near_ma15 = False
+
+            bullish_candle = False
+            touches_ma15 = False
+            support_candle = False
+
+            # Not enough data
             if (
-                pd.isna(row["MA15"])
-                or pd.isna(row["MA30"])
-                or pd.isna(row["MA150"])
+                pd.isna(ma15)
+                or pd.isna(ma30)
+                or pd.isna(ma150)
             ):
+
                 signal = "HOLD"
 
-            # Bullish trend
-            elif (
-                row["MA15"] > row["MA30"] > row["MA150"]
-            ):
+            else:
 
-                if row["close"] > row["MA15"]:
-                    signal = "BUY"
+                bullish_trend = (
 
-                elif row["close"] < row["MA15"]:
-                    signal = "SELL"
+                    ma15 > ma30 > ma150
+
+                )
+
+                distance_from_ma = (
+
+                    abs(
+
+                        row["close"] - ma15
+
+                    )
+
+                    / ma15
+
+                ) * 100
+
+                near_ma15 = (
+
+                    distance_from_ma <= pullback_percent
+
+                )
+
+                bullish_candle = (
+
+                    row["close"] > row["open"]
+
+                )
+
+                touches_ma15 = (
+
+                    row["low"] <= ma15
+
+                )
+
+                support_candle = (
+
+                    bullish_trend
+
+                    and
+
+                    near_ma15
+
+                    and
+
+                    bullish_candle
+
+                    and
+
+                    touches_ma15
+
+                )
+
+                if support_candle:
+
+                    pending_entry = True
+
+                    support_high = row["high"]
+
+                    support_candle_count = 0
+
+                buy_condition = False
+
+                if pending_entry:
+
+                    support_candle_count += 1
+
+                    if row["high"] > support_high:
+
+                        buy_condition = True
+
+                        pending_entry = False
+
+                        support_high = None
+
+                        support_candle_count = 0
+
+                    elif support_candle_count >= max_breakout_wait:
+
+                        pending_entry = False
+
+                        support_high = None
+
+                        support_candle_count = 0
+
+                sell_condition = (
+
+                    row["close"] < ma15
+
+                )
+
+                if not in_position:
+
+                    if buy_condition:
+
+                        signal = "BUY"
+
+                        in_position = True
+
+                    else:
+
+                        signal = "HOLD"
 
                 else:
-                    signal = "HOLD"
 
-            # Not in a bullish trend
-            else:
-                signal = "HOLD"
+                    if sell_condition:
 
+                        signal = "SELL"
+
+                        in_position = False
+
+                    else:
+
+                        signal = "HOLD"
             signals.append(
-                {
+                                {
                     "date": row["date"],
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
                     "close": float(row["close"]),
-                    "MA15": None if pd.isna(row["MA15"]) else float(row["MA15"]),
-                    "MA30": None if pd.isna(row["MA30"]) else float(row["MA30"]),
-                    "MA150": None if pd.isna(row["MA150"]) else float(row["MA150"]),
+                    "volume": float(row["volume"]),
+                    "MA15": None if pd.isna(ma15) else float(ma15),
+                    "MA30": None if pd.isna(ma30) else float(ma30),
+                    "MA150": None if pd.isna(ma150) else float(ma150),
+                    "distance_from_ma": (
+                        None if distance_from_ma is None
+                        else round(distance_from_ma, 2)
+                    ),
+                    "near_ma15": near_ma15,
+                    "bullish_candle": bullish_candle,
+                    "touches_ma15": touches_ma15,
+                    "support_candle": support_candle,
                     "signal": signal
                 }
             )
