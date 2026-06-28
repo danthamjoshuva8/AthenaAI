@@ -4,3 +4,5 @@ sqlalchemy==2.0.41
 psycopg2-binary==2.9.10
 alembic==1.16.4
 python-dotenv==1.1.1
+yfinance==0.2.65
+pandas==2.3.1
