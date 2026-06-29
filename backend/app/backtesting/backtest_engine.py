@@ -59,6 +59,11 @@ class BacktestEngine:
 
                     "close": row["close"],
 
+                    "entry_price": row.get(
+                        "entry_price",
+                        row["close"]
+                    ),
+
                     "signal": row["signal"],
 
                     "action": action,
@@ -91,7 +96,7 @@ class BacktestEngine:
 
             if row["action"] == "BUY":
 
-                entry_price = row["close"]
+                entry_price = row["entry_price"]
 
                 entry_date = row["date"]
 

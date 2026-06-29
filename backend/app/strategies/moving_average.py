@@ -110,11 +110,12 @@ class MovingAverageStrategy:
 
         in_position = False
 
-        pending_entry = False
+        waiting_breakout = False
 
         support_high = None
+        support_low = None
 
-        support_candle_count = 0
+        breakout_candle_count = 0
 
         max_breakout_wait = 5
 
@@ -124,6 +125,7 @@ class MovingAverageStrategy:
         for _, row in df.iterrows():
 
             signal = "HOLD"
+            entry_price = None
 
             ma15 = row["MA15"]
             ma30 = row["MA30"]
@@ -201,37 +203,7 @@ class MovingAverageStrategy:
 
                 )
 
-                if support_candle:
-
-                    pending_entry = True
-
-                    support_high = row["high"]
-
-                    support_candle_count = 0
-
                 buy_condition = False
-
-                if pending_entry:
-
-                    support_candle_count += 1
-
-                    if row["high"] > support_high:
-
-                        buy_condition = True
-
-                        pending_entry = False
-
-                        support_high = None
-
-                        support_candle_count = 0
-
-                    elif support_candle_count >= max_breakout_wait:
-
-                        pending_entry = False
-
-                        support_high = None
-
-                        support_candle_count = 0
 
                 sell_condition = (
 
@@ -240,6 +212,38 @@ class MovingAverageStrategy:
                 )
 
                 if not in_position:
+
+                    if support_candle:
+
+                        waiting_breakout = True
+
+                        support_high = row["high"]
+
+                        support_low = row["low"]
+
+                        breakout_candle_count = 0
+
+                    elif waiting_breakout:
+
+                        breakout_candle_count += 1
+
+                        if row["high"] > support_high:
+
+                            buy_condition = True
+
+                            entry_price = support_high
+
+                            waiting_breakout = False
+
+                        elif breakout_candle_count >= max_breakout_wait:
+
+                            waiting_breakout = False
+
+                            support_high = None
+
+                            support_low = None
+
+                            breakout_candle_count = 0
 
                     if buy_condition:
 
@@ -259,11 +263,19 @@ class MovingAverageStrategy:
 
                         in_position = False
 
+                        waiting_breakout = False
+
+                        support_high = None
+
+                        support_low = None
+
+                        breakout_candle_count = 0
+
                     else:
 
                         signal = "HOLD"
             signals.append(
-                                {
+                {
                     "date": row["date"],
                     "open": float(row["open"]),
                     "high": float(row["high"]),
@@ -281,6 +293,20 @@ class MovingAverageStrategy:
                     "bullish_candle": bullish_candle,
                     "touches_ma15": touches_ma15,
                     "support_candle": support_candle,
+                    "waiting_breakout": waiting_breakout,
+                    "breakout_candle_count": breakout_candle_count,
+                    "support_high": (
+                        None if support_high is None
+                        else float(support_high)
+                    ),
+                    "support_low": (
+                        None if support_low is None
+                        else float(support_low)
+                    ),
+                    "entry_price": (
+                        None if entry_price is None
+                        else float(entry_price)
+                    ),
                     "signal": signal
                 }
             )
