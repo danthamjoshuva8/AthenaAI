@@ -139,7 +139,7 @@ class MovingAverageStrategy:
 
         min_lower_wick_ratio = 0.20
 
-        for _, row in df.iterrows():
+        for index,row in df.iterrows():
 
             signal = "HOLD"
 
@@ -380,6 +380,22 @@ class MovingAverageStrategy:
 
                         support_low = row["low"]
 
+                        current_index = index
+
+                        if current_index > 0:
+
+                            previous = df.iloc[current_index - 1]
+
+                            if previous["close"] < previous["open"]:
+
+                                support_low = min(
+
+                                    previous["low"],
+
+                                    row["low"]
+
+                                )
+
                         breakout_candle_count = 0
 
                     elif waiting_breakout:
@@ -388,15 +404,7 @@ class MovingAverageStrategy:
 
                         if (
 
-                            row["high"] >= support_high
-
-                            and
-
                             row["close"] > support_high
-
-                            and
-
-                            volume_confirmation
 
                         ):
 
@@ -423,6 +431,7 @@ class MovingAverageStrategy:
                             support_high = None
 
                             support_low = None
+                            current_stop_loss=None
 
                             breakout_candle_count = 0
 
