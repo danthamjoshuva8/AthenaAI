@@ -20,6 +20,246 @@ class BacktestEngine:
             symbol
         )
 
+    def _open_position(
+        self,
+        row: dict
+    ):
+
+        return {
+
+            "entry_date": row["date"],
+
+            "entry_price": row["entry_price"],
+
+            "stop_loss": row["stop_loss"]
+
+        }
+
+    def _resolve_exit(
+        self,
+        row: dict,
+        position: dict
+    ):
+
+        stop_loss = position["stop_loss"]
+
+        if (
+            stop_loss is not None
+            and row["low"] <= stop_loss
+        ):
+
+            return {
+
+                "exit_price": stop_loss,
+
+                "exit_reason": "STOP_LOSS"
+
+            }
+
+        ma15 = row.get("MA15")
+
+        if (
+            ma15 is not None
+            and row["close"] < ma15
+        ):
+
+            return {
+
+                "exit_price": row["close"],
+
+                "exit_reason": "MA15_CLOSE"
+
+            }
+
+        return None
+
+    def _build_position_row(
+        self,
+        row: dict,
+        action: str,
+        trade_context: dict,
+        position_open: bool,
+        exit_reason=None,
+        exit_price=None
+    ):
+
+        return {
+
+            "date": row["date"],
+
+            "close": row["close"],
+
+            "entry_price": (
+                None if trade_context is None
+                else round(trade_context["entry_price"], 2)
+            ),
+
+            "stop_loss": (
+                None if trade_context is None
+                else round(trade_context["stop_loss"], 2)
+            ),
+
+            "exit_price": (
+                None if exit_price is None
+                else round(exit_price, 2)
+            ),
+
+            "signal": row["signal"],
+
+            "action": action,
+
+            "position": "LONG" if position_open else "NONE",
+
+            "exit_reason": exit_reason
+
+        }
+
+    def _build_trade_record(
+        self,
+        position: dict,
+        exit_row: dict,
+        exit_price: float,
+        exit_reason: str
+    ):
+
+        profit_points = exit_price - position["entry_price"]
+
+        profit_percent = (
+            profit_points
+            / position["entry_price"]
+        ) * 100
+
+        holding_days = (
+            exit_row["date"]
+            - position["entry_date"]
+        ).days
+
+        return {
+
+            "entry_date": position["entry_date"],
+
+            "exit_date": exit_row["date"],
+
+            "entry_price": round(
+                position["entry_price"],
+                2
+            ),
+
+            "exit_price": round(
+                exit_price,
+                2
+            ),
+
+            "stop_loss": round(
+                position["stop_loss"],
+                2
+            ),
+
+            "holding_days": holding_days,
+
+            "profit_points": round(
+                profit_points,
+                2
+            ),
+
+            "profit_percent": round(
+                profit_percent,
+                2
+            ),
+
+            "exit_reason": exit_reason,
+
+            "profit": round(
+                profit_points,
+                2
+            )
+
+        }
+
+    def _process_signals(
+        self,
+        signals: list
+    ):
+
+        position = None
+
+        positions = []
+
+        trades = []
+
+        for row in signals:
+
+            action = "HOLD"
+            exit_reason = None
+            exit_price = None
+            row_position = position
+
+            if position is None:
+
+                if row["signal"] == "BUY":
+
+                    position = self._open_position(
+                        row
+                    )
+
+                    action = "BUY"
+
+                    row_position = position
+
+                positions.append(
+                    self._build_position_row(
+                        row,
+                        action,
+                        row_position,
+                        position is not None
+                    )
+                )
+
+                continue
+
+            exit_details = self._resolve_exit(
+                row,
+                position
+            )
+
+            if exit_details is not None:
+
+                action = "SELL"
+
+                exit_reason = exit_details[
+                    "exit_reason"
+                ]
+
+                exit_price = exit_details[
+                    "exit_price"
+                ]
+
+                trades.append(
+                    self._build_trade_record(
+                        position,
+                        row,
+                        exit_price,
+                        exit_reason
+                    )
+                )
+
+                row_position = position
+
+                position = None
+
+            positions.append(
+                self._build_position_row(
+                    row,
+                    action,
+                    row_position,
+                    position is not None,
+                    exit_reason,
+                    exit_price
+                )
+            )
+
+        return positions, trades
+
     def simulate_positions(
         self,
         db: Session,
@@ -31,50 +271,11 @@ class BacktestEngine:
             symbol
         )
 
-        position = False
+        positions, _ = self._process_signals(
+            signals
+        )
 
-        trades = []
-
-        for row in signals:
-
-            action = "HOLD"
-
-            if row["signal"] == "BUY" and not position:
-
-                action = "BUY"
-
-                position = True
-
-            elif row["signal"] == "SELL" and position:
-
-                action = "SELL"
-
-                position = False
-
-            trades.append(
-
-                {
-
-                    "date": row["date"],
-
-                    "close": row["close"],
-
-                    "entry_price": row.get(
-                        "entry_price",
-                        row["close"]
-                    ),
-
-                    "signal": row["signal"],
-
-                    "action": action,
-
-                    "position": "LONG" if position else "NONE"
-
-                }
-
-            )
-
-        return trades
+        return positions
     
     def execute_trades(
         self,
@@ -82,62 +283,14 @@ class BacktestEngine:
         symbol: str
     ):
 
-        positions = self.simulate_positions(
+        signals = self.load_signals(
             db,
             symbol
         )
 
-        trades = []
-
-        entry_price = None
-        entry_date = None
-
-        for row in positions:
-
-            if row["action"] == "BUY":
-
-                entry_price = row["entry_price"]
-
-                entry_date = row["date"]
-
-            elif row["action"] == "SELL" and entry_price is not None:
-
-                exit_price = row["close"]
-
-                exit_date = row["date"]
-
-                profit = exit_price - entry_price
-
-                profit_percent = (
-                    (profit / entry_price) * 100
-                )
-
-                trades.append(
-
-                    {
-
-                        "entry_date": entry_date,
-
-                        "exit_date": exit_date,
-
-                        "entry_price": round(entry_price, 2),
-
-                        "exit_price": round(exit_price, 2),
-
-                        "profit": round(profit, 2),
-
-                        "profit_percent": round(
-                            profit_percent,
-                            2
-                        )
-
-                    }
-
-                )
-
-                entry_price = None
-
-                entry_date = None
+        _, trades = self._process_signals(
+            signals
+        )
 
         return trades
     
@@ -180,7 +333,7 @@ class BacktestEngine:
 
         profits = [
 
-            trade["profit"]
+            trade["profit_points"]
 
             for trade in trades
 

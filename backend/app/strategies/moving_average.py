@@ -93,6 +93,12 @@ class MovingAverageStrategy:
 
         )
 
+        df["VOLUME20"] = (
+            df["volume"]
+            .rolling(20)
+            .mean()
+        )
+
         return df
     
     def generate_signals(
@@ -108,12 +114,17 @@ class MovingAverageStrategy:
 
         signals = []
 
+        # Position status
         in_position = False
 
+        # Breakout waiting variables
         waiting_breakout = False
 
         support_high = None
+
         support_low = None
+
+        current_stop_loss = None
 
         breakout_candle_count = 0
 
@@ -121,11 +132,28 @@ class MovingAverageStrategy:
 
         # Maximum distance allowed from MA15
         pullback_percent = 1.5
+        volume_multiplier = 0.5
+        max_body_percent = 3.0
+
+        max_upper_wick_ratio = 1.0
+
+        min_lower_wick_ratio = 0.20
 
         for _, row in df.iterrows():
 
             signal = "HOLD"
+
             entry_price = None
+
+            stop_loss = None
+
+            exit_price = None
+
+            exit_reason = None
+
+            buy_condition = False
+
+            sell_condition = False
 
             ma15 = row["MA15"]
             ma30 = row["MA30"]
@@ -137,6 +165,14 @@ class MovingAverageStrategy:
             bullish_candle = False
             touches_ma15 = False
             support_candle = False
+            volume_confirmation = False
+            body_percent = None
+
+            upper_wick_ratio = None
+
+            lower_wick_ratio = None
+
+            quality_pass = False
 
             # Not enough data
             if (
@@ -179,11 +215,132 @@ class MovingAverageStrategy:
 
                 )
 
+                body_size = abs(
+
+                    row["close"] - row["open"]
+
+                )
+
+                body_percent = (
+
+                    body_size
+
+                    / row["open"]
+
+                ) * 100
+
+                upper_wick = (
+
+                    row["high"]
+
+                    - max(
+
+                        row["open"],
+
+                        row["close"]
+
+                    )
+
+                )
+
+                lower_wick = (
+
+                    min(
+
+                        row["open"],
+
+                        row["close"]
+
+                    )
+
+                    - row["low"]
+
+                )
+
+                if body_size > 0:
+
+                    upper_wick_ratio = (
+
+                        upper_wick
+
+                        / body_size
+
+                    )
+
+                    lower_wick_ratio = (
+
+                        lower_wick
+
+                        / body_size
+
+                    )
+
+                else:
+
+                    upper_wick_ratio = 0
+
+                    lower_wick_ratio = 0
+
+                good_body = (
+
+                    body_percent
+
+                    <=
+
+                    max_body_percent
+
+                )
+
+                good_upper_wick = (
+
+                    upper_wick_ratio
+
+                    <=
+
+                    max_upper_wick_ratio
+
+                )
+
+                good_lower_wick = (
+
+                    lower_wick_ratio
+
+                    >=
+
+                    min_lower_wick_ratio
+
+                )
+
+                quality_pass = (
+
+                    good_body
+
+                    and
+
+                    good_upper_wick
+
+                    and
+
+                    good_lower_wick
+
+                )
+
                 touches_ma15 = (
 
                     row["low"] <= ma15
 
+                    and
+
+                    row["close"] > ma15
+
                 )
+
+                if not pd.isna(row["VOLUME20"]):
+
+                    volume_confirmation = (
+                        row["volume"] >= row["VOLUME20"] * volume_multiplier
+                        and row["volume"] > 0
+                    )
 
                 support_candle = (
 
@@ -201,15 +358,17 @@ class MovingAverageStrategy:
 
                     touches_ma15
 
+                    and
+
+                    volume_confirmation
+
+                    and
+
+                    quality_pass
+
                 )
 
                 buy_condition = False
-
-                sell_condition = (
-
-                    row["close"] < ma15
-
-                )
 
                 if not in_position:
 
@@ -227,11 +386,33 @@ class MovingAverageStrategy:
 
                         breakout_candle_count += 1
 
-                        if row["high"] > support_high:
+                        if (
+
+                            row["high"] >= support_high
+
+                            and
+
+                            row["close"] > support_high
+
+                            and
+
+                            volume_confirmation
+
+                        ):
 
                             buy_condition = True
 
-                            entry_price = support_high
+                            entry_price = max(
+
+                                support_high,
+
+                                row["open"]
+
+                            )
+
+                            stop_loss = support_low
+
+                            current_stop_loss = stop_loss
 
                             waiting_breakout = False
 
@@ -245,21 +426,35 @@ class MovingAverageStrategy:
 
                             breakout_candle_count = 0
 
-                    if buy_condition:
+                if buy_condition:
 
-                        signal = "BUY"
+                    signal = "BUY"
 
-                        in_position = True
+                    in_position = True
 
-                    else:
+                    waiting_breakout = False
 
-                        signal = "HOLD"
+                    support_high = None
 
-                else:
+                    support_low = None
+
+                    breakout_candle_count = 0
+
+                elif in_position:
+
+                    sell_condition = (
+
+                        row["close"] < ma15
+
+                    )
 
                     if sell_condition:
 
                         signal = "SELL"
+
+                        exit_price = row["close"]
+
+                        exit_reason = "MA15_BREAK"
 
                         in_position = False
 
@@ -271,9 +466,17 @@ class MovingAverageStrategy:
 
                         breakout_candle_count = 0
 
+                        current_stop_loss = None
+
+                        entry_price = None
+
                     else:
 
                         signal = "HOLD"
+                else:
+
+                    signal = "HOLD"
+
             signals.append(
                 {
                     "date": row["date"],
@@ -282,6 +485,17 @@ class MovingAverageStrategy:
                     "low": float(row["low"]),
                     "close": float(row["close"]),
                     "volume": float(row["volume"]),
+                    "volume20": (
+
+                        None
+
+                        if pd.isna(row["VOLUME20"])
+
+                        else round(float(row["VOLUME20"]), 2)
+
+                    ),
+
+                    "volume_confirmation": volume_confirmation,
                     "MA15": None if pd.isna(ma15) else float(ma15),
                     "MA30": None if pd.isna(ma30) else float(ma30),
                     "MA150": None if pd.isna(ma150) else float(ma150),
@@ -304,10 +518,57 @@ class MovingAverageStrategy:
                         else float(support_low)
                     ),
                     "entry_price": (
-                        None if entry_price is None
+                        None
+                        if entry_price is None
                         else float(entry_price)
                     ),
-                    "signal": signal
+                    "exit_price": (
+
+                        None
+
+                        if exit_price is None
+
+                        else float(exit_price)
+
+                    ),
+
+                    "exit_reason": exit_reason,
+                    "trade_status": (
+
+                        "OPEN"
+
+                        if in_position
+
+                        else "CLOSED"
+
+                    ),
+                    "stop_loss": (
+                        None
+                        if current_stop_loss is None
+                        else float(current_stop_loss)
+                    ),
+
+                    "in_position": in_position,
+                    "signal": signal,
+                    "body_percent": (
+                        None
+                        if body_percent is None
+                        else round(body_percent, 2)
+                    ),
+
+                    "upper_wick_ratio": (
+                        None
+                        if upper_wick_ratio is None
+                        else round(upper_wick_ratio, 2)
+                    ),
+
+                    "lower_wick_ratio": (
+                        None
+                        if lower_wick_ratio is None
+                        else round(lower_wick_ratio, 2)
+                    ),
+
+                    "quality_pass": quality_pass
                 }
             )
 
