@@ -126,6 +126,14 @@ class MovingAverageStrategy:
 
         current_stop_loss = None
 
+        current_entry_price = None
+
+        target_2r = None
+
+        target_3r = None
+
+        partial_exit_done = False
+
         breakout_candle_count = 0
 
         max_breakout_wait = 5
@@ -447,17 +455,77 @@ class MovingAverageStrategy:
 
                     support_low = None
 
+                    current_stop_loss = stop_loss
+
+                    current_entry_price = entry_price
+
+                    risk_per_share = current_entry_price - current_stop_loss
+
+                    target_2r = current_entry_price + (2 * risk_per_share)
+
+                    target_3r = current_entry_price + (3 * risk_per_share)
+
+                    partial_exit_done = False
+
                     breakout_candle_count = 0
 
                 elif in_position:
 
-                    sell_condition = (
+                    #
+                    # PARTIAL EXIT
+                    #
 
-                        row["close"] < ma15
+                    if (
 
-                    )
+                        not partial_exit_done
 
-                    if sell_condition:
+                        and
+
+                        row["high"] >= target_2r
+
+                    ):
+
+                        signal = "PARTIAL_EXIT"
+
+                        exit_price = target_2r
+
+                        exit_reason = "TARGET_2R"
+
+                        partial_exit_done = True
+
+                    #
+                    # FINAL TARGET
+                    #
+
+                    elif (
+                        partial_exit_done
+                        and
+                        row["high"] >= target_3r
+                    ):
+
+                        signal = "SELL"
+
+                        exit_price = target_3r
+
+                        exit_reason = "TARGET_3R"
+
+                        in_position = False
+
+                        current_stop_loss = None
+
+                        current_entry_price = None
+
+                        target_2r = None
+
+                        target_3r = None
+
+                        partial_exit_done = False
+
+                    #
+                    # MA15 EXIT
+                    #
+
+                    elif row["close"] < ma15:
 
                         signal = "SELL"
 
@@ -467,24 +535,19 @@ class MovingAverageStrategy:
 
                         in_position = False
 
-                        waiting_breakout = False
-
-                        support_high = None
-
-                        support_low = None
-
-                        breakout_candle_count = 0
-
                         current_stop_loss = None
 
-                        entry_price = None
+                        current_entry_price = None
+
+                        target_2r = None
+
+                        target_3r = None
+
+                        partial_exit_done = False
 
                     else:
 
                         signal = "HOLD"
-                else:
-
-                    signal = "HOLD"
 
             signals.append(
                 {
@@ -577,7 +640,20 @@ class MovingAverageStrategy:
                         else round(lower_wick_ratio, 2)
                     ),
 
-                    "quality_pass": quality_pass
+                    "quality_pass": quality_pass,
+                    "target_2r": (
+                        None
+                        if target_2r is None
+                        else round(target_2r, 2)
+                    ),
+
+                    "target_3r": (
+                        None
+                        if target_3r is None
+                        else round(target_3r, 2)
+                    ),
+
+                    "partial_exit_done": partial_exit_done
                 }
             )
 
