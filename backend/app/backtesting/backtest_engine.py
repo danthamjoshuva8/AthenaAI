@@ -9,6 +9,18 @@ class BacktestEngine:
 
         self.strategy = MovingAverageStrategy()
 
+        self.initial_capital = 10000000
+
+        self.risk_percent = 1
+
+        self.risk_amount = (
+
+            self.initial_capital
+
+            * self.risk_percent
+
+        ) / 100
+
     def load_signals(
         self,
         db: Session,
@@ -25,13 +37,73 @@ class BacktestEngine:
         row: dict
     ):
 
+        risk_per_share = (
+
+            row["entry_price"]
+
+            - row["stop_loss"]
+
+        )
+
+        target_2r = (
+            row["entry_price"]
+            + (2 * risk_per_share)
+        )
+
+        target_3r = (
+            row["entry_price"]
+            + (3 * risk_per_share)
+        )
+
+        quantity = (
+
+            self.risk_amount
+
+            / risk_per_share
+
+        )
+
+        capital_used = (
+
+            quantity
+
+            * row["entry_price"]
+
+        )
+
         return {
 
             "entry_date": row["date"],
 
             "entry_price": row["entry_price"],
 
-            "stop_loss": row["stop_loss"]
+            "stop_loss": row["stop_loss"],
+
+            "risk_per_share": round(
+
+                risk_per_share,
+
+                2
+
+            ),
+
+            "quantity": int(quantity),
+
+            "capital_used": round(
+
+                capital_used,
+
+                2
+
+            ),
+
+            "target_2r": round(target_2r, 2),
+            "target_3r": round(target_3r, 2),
+            "remaining_quantity": int(quantity),
+
+            "partial_exit_done": False,
+
+            "realized_profit": 0.0
 
         }
 
@@ -110,7 +182,66 @@ class BacktestEngine:
 
             "position": "LONG" if position_open else "NONE",
 
-            "exit_reason": exit_reason
+            "exit_reason": exit_reason,
+            "quantity": (
+
+                None
+
+                if trade_context is None
+
+                else trade_context["quantity"]
+
+            ),
+
+            "risk_per_share": (
+
+                None
+
+                if trade_context is None
+
+                else trade_context["risk_per_share"]
+
+            ),
+
+            "capital_used": (
+
+                None
+
+                if trade_context is None
+
+                else trade_context["capital_used"]
+
+            ),
+            "target_2r": (
+                None
+                if trade_context is None
+                else trade_context["target_2r"]
+            ),
+
+            "target_3r": (
+                None
+                if trade_context is None
+                else trade_context["target_3r"]
+            ),
+            "remaining_quantity": (
+
+                None
+
+                if trade_context is None
+
+                else trade_context["remaining_quantity"]
+
+            ),
+
+            "partial_exit_done": (
+
+                None
+
+                if trade_context is None
+
+                else trade_context["partial_exit_done"]
+
+            )
 
         }
 
@@ -123,6 +254,14 @@ class BacktestEngine:
     ):
 
         profit_points = exit_price - position["entry_price"]
+
+        profit = (
+
+            profit_points
+
+            * position["quantity"]
+
+        )
 
         profit_percent = (
             profit_points
@@ -169,10 +308,25 @@ class BacktestEngine:
 
             "exit_reason": exit_reason,
 
+            "quantity": position["quantity"],
+
+            "capital_used": position["capital_used"],
+
+            "risk_per_share": position["risk_per_share"],
+
             "profit": round(
-                profit_points,
+
+                profit,
+
                 2
-            )
+
+            ),
+            "target_2r": position["target_2r"],
+
+            "target_3r": position["target_3r"],
+            "remaining_quantity": position["remaining_quantity"],
+
+            "partial_exit_done": position["partial_exit_done"]
 
         }
 
@@ -333,7 +487,7 @@ class BacktestEngine:
 
         profits = [
 
-            trade["profit_points"]
+            trade["profit"]
 
             for trade in trades
 
@@ -421,7 +575,7 @@ class BacktestEngine:
         self,
         db: Session,
         symbol: str,
-        initial_capital: float = 100000
+        initial_capital: float = 10000000
     ):
 
         trades = self.execute_trades(
