@@ -53,6 +53,26 @@ class BacktestService:
             symbol
         )
     
+    def portfolio_metrics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+        return self.engine.portfolio_metrics(
+            db,
+            symbols
+        )
+    
+    def execute_portfolio(
+        self,
+        db: Session,
+        symbols: list
+    ):
+        return self.engine.execute_portfolio(
+            db,
+            symbols
+        )
+    
     def equity_curve(
         self,
         db: Session,

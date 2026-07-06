@@ -9,7 +9,7 @@ class BacktestEngine:
 
         self.strategy = MovingAverageStrategy()
 
-        self.initial_capital = 10000000
+        self.initial_capital = 100000
 
         self.risk_percent = 1
 
@@ -101,49 +101,15 @@ class BacktestEngine:
             "target_3r": round(target_3r, 2),
             "remaining_quantity": int(quantity),
 
-            "partial_exit_done": False,
+            "partial_exit_2r": False,
 
-            "realized_profit": 0.0
+            "partial_exit_3r": False,
+
+            "realized_profit": 0.0,
+
+            "events": []
 
         }
-
-    def _resolve_exit(
-        self,
-        row: dict,
-        position: dict
-    ):
-
-        stop_loss = position["stop_loss"]
-
-        if (
-            stop_loss is not None
-            and row["low"] <= stop_loss
-        ):
-
-            return {
-
-                "exit_price": stop_loss,
-
-                "exit_reason": "STOP_LOSS"
-
-            }
-
-        ma15 = row.get("MA15")
-
-        if (
-            ma15 is not None
-            and row["close"] < ma15
-        ):
-
-            return {
-
-                "exit_price": row["close"],
-
-                "exit_reason": "MA15_CLOSE"
-
-            }
-
-        return None
 
     def _build_position_row(
         self,
@@ -233,13 +199,23 @@ class BacktestEngine:
 
             ),
 
-            "partial_exit_done": (
+            "partial_exit_2r": (
 
                 None
 
                 if trade_context is None
 
-                else trade_context["partial_exit_done"]
+                else trade_context["partial_exit_2r"]
+
+            ),
+
+            "partial_exit_3r": (
+
+                None
+
+                if trade_context is None
+
+                else trade_context["partial_exit_3r"]
 
             )
 
@@ -255,13 +231,7 @@ class BacktestEngine:
 
         profit_points = exit_price - position["entry_price"]
 
-        profit = (
-
-            profit_points
-
-            * position["quantity"]
-
-        )
+        profit = position["realized_profit"]
 
         profit_percent = (
             profit_points
@@ -324,9 +294,21 @@ class BacktestEngine:
             "target_2r": position["target_2r"],
 
             "target_3r": position["target_3r"],
-            "remaining_quantity": position["remaining_quantity"],
+            "sold_quantity": (
 
-            "partial_exit_done": position["partial_exit_done"]
+                position["quantity"]
+
+                - position["remaining_quantity"]
+
+            ),
+
+            "remaining_quantity": 0,
+
+            "partial_exit_2r": position["partial_exit_2r"],
+
+            "partial_exit_3r": position["partial_exit_3r"],
+
+            "events": position["events"]
 
         }
 
@@ -356,6 +338,18 @@ class BacktestEngine:
                         row
                     )
 
+                    position["events"].append({
+
+                        "type": "BUY",
+
+                        "date": row["date"],
+
+                        "price": position["entry_price"],
+
+                        "quantity": position["quantity"]
+
+                    })
+
                     action = "BUY"
 
                     row_position = position
@@ -370,31 +364,106 @@ class BacktestEngine:
                 )
 
                 continue
+            if row["signal"] == "PARTIAL_EXIT":
 
-            exit_details = self._resolve_exit(
-                row,
-                position
-            )
+                action = "PARTIAL_EXIT"
 
-            if exit_details is not None:
+                if not position["partial_exit_2r"]:
+
+                    sell_quantity = position["remaining_quantity"] // 2
+
+                    position["partial_exit_2r"] = True
+
+                elif not position["partial_exit_3r"]:
+
+                    sell_quantity = position["remaining_quantity"] // 2
+
+                    position["partial_exit_3r"] = True
+
+                else:
+
+                    sell_quantity = 0
+
+                partial_profit = (
+
+                    row["exit_price"]
+
+                    - position["entry_price"]
+
+                ) * sell_quantity
+
+                position["remaining_quantity"] -= sell_quantity
+
+                position["realized_profit"] += partial_profit
+
+                position["events"].append({
+
+                    "type": row["exit_reason"],
+
+                    "date": row["date"],
+
+                    "price": row["exit_price"],
+
+                    "quantity": sell_quantity,
+
+                    "profit": round(partial_profit, 2)
+
+                })
+
+                row_position = position
+
+            elif row["signal"] == "SELL":
 
                 action = "SELL"
 
-                exit_reason = exit_details[
-                    "exit_reason"
-                ]
+                exit_reason = row["exit_reason"]
 
-                exit_price = exit_details[
-                    "exit_price"
-                ]
+                exit_price = row["exit_price"]
+
+                #
+                # Sell remaining quantity
+                #
+
+                remaining_profit = (
+
+                    row["exit_price"]
+
+                    - position["entry_price"]
+
+                ) * position["remaining_quantity"]
+
+                position["realized_profit"] += remaining_profit
+
+                position["remaining_quantity"] = 0
+
+                position["events"].append({
+
+                    "type": "SELL",
+
+                    "date": row["date"],
+
+                    "price": row["exit_price"],
+
+                    "quantity": position["remaining_quantity"],
+
+                    "profit": round(remaining_profit, 2)
+
+                })
 
                 trades.append(
+
                     self._build_trade_record(
+
                         position,
+
                         row,
+
                         exit_price,
+
                         exit_reason
+
                     )
+
                 )
 
                 row_position = position
@@ -447,6 +516,33 @@ class BacktestEngine:
         )
 
         return trades
+    
+    def execute_portfolio(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio_trades = []
+
+        for symbol in symbols:
+
+            trades = self.execute_trades(
+                db,
+                symbol
+            )
+
+            for trade in trades:
+
+                trade["symbol"] = symbol
+
+            portfolio_trades.extend(trades)
+
+        portfolio_trades.sort(
+            key=lambda x: x["exit_date"]
+        )
+
+        return portfolio_trades
     
     def performance_metrics(
         self,
@@ -569,6 +665,109 @@ class BacktestEngine:
 
             )
 
+        }
+    
+    def portfolio_metrics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        trades = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        if len(trades) == 0:
+
+            return {
+
+                "total_trades":0,
+
+                "net_profit":0
+
+            }
+
+        profits = [
+
+            trade["profit"]
+
+            for trade in trades
+
+        ]
+
+        winners = [
+
+            p
+
+            for p in profits
+
+            if p > 0
+
+        ]
+
+        losers = [
+
+            p
+
+            for p in profits
+
+            if p <= 0
+
+        ]
+
+        return {
+
+            "total_trades":len(trades),
+
+            "winning_trades":len(winners),
+
+            "losing_trades":len(losers),
+
+            "win_rate":round(
+
+                len(winners)
+
+                / len(trades)
+
+                *100,
+
+                2
+
+            ),
+
+            "net_profit":round(
+
+                sum(profits),
+
+                2
+
+            ),
+
+            "average_profit":round(
+
+                sum(profits)
+
+                /len(trades),
+
+                2
+            ),
+
+            "best_trade":round(
+
+                max(profits),
+
+                2
+
+            ),
+
+            "worst_trade":round(
+
+                min(profits),
+
+                2
+
+            )
         }
     
     def equity_curve(

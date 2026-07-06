@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.services.backtest_service import BacktestService
+from app.utils.nifty200 import get_nifty200_symbols
 
 router = APIRouter(
     prefix="/backtest",
@@ -86,4 +87,18 @@ def drawdown_metrics(
     return service.drawdown_metrics(
         db,
         symbol
+    )
+
+@router.get("/portfolio")
+def portfolio_metrics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    service = BacktestService()
+
+    return service.portfolio_metrics(
+        db,
+        symbols
     )

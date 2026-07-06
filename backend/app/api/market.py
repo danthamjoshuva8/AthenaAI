@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 
 from app.services.market_service import MarketService
+from app.schemas.market_data import HistoryLoadRequest
 
 router = APIRouter(
     prefix="/market",
@@ -95,3 +96,14 @@ def get_symbol_market_data(
     )
 
     return data
+
+@router.post("/load-history")
+def load_history(
+    request: HistoryLoadRequest,
+    db: Session = Depends(get_db)
+):
+
+    return service.load_history(
+        db,
+        request.years
+    )

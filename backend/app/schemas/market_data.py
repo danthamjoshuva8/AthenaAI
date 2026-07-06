@@ -21,3 +21,6 @@ class MarketDataResponse(BaseModel):
     class Config:
 
         from_attributes = True
+
+class HistoryLoadRequest(BaseModel):
+    years: int = 5

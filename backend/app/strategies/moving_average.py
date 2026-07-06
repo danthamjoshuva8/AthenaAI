@@ -132,7 +132,9 @@ class MovingAverageStrategy:
 
         target_3r = None
 
-        partial_exit_done = False
+        partial_exit_2r = False
+
+        partial_exit_3r = False
 
         breakout_candle_count = 0
 
@@ -465,19 +467,21 @@ class MovingAverageStrategy:
 
                     target_3r = current_entry_price + (3 * risk_per_share)
 
-                    partial_exit_done = False
+                    partial_exit_2r = False
+
+                    partial_exit_3r = False
 
                     breakout_candle_count = 0
 
                 elif in_position:
 
                     #
-                    # PARTIAL EXIT
+                    # FIRST PARTIAL EXIT (2R)
                     #
 
                     if (
 
-                        not partial_exit_done
+                        not partial_exit_2r
 
                         and
 
@@ -491,35 +495,34 @@ class MovingAverageStrategy:
 
                         exit_reason = "TARGET_2R"
 
-                        partial_exit_done = True
+                        partial_exit_2r = True
+
 
                     #
-                    # FINAL TARGET
+                    # SECOND PARTIAL EXIT (3R)
                     #
 
                     elif (
-                        partial_exit_done
+
+                        partial_exit_2r
+
                         and
+
+                        not partial_exit_3r
+
+                        and
+
                         row["high"] >= target_3r
+
                     ):
 
-                        signal = "SELL"
+                        signal = "PARTIAL_EXIT"
 
                         exit_price = target_3r
 
                         exit_reason = "TARGET_3R"
 
-                        in_position = False
-
-                        current_stop_loss = None
-
-                        current_entry_price = None
-
-                        target_2r = None
-
-                        target_3r = None
-
-                        partial_exit_done = False
+                        partial_exit_3r = True
 
                     #
                     # MA15 EXIT
@@ -543,7 +546,9 @@ class MovingAverageStrategy:
 
                         target_3r = None
 
-                        partial_exit_done = False
+                        partial_exit_2r = False
+
+                        partial_exit_3r = False
 
                     else:
 
@@ -653,7 +658,9 @@ class MovingAverageStrategy:
                         else round(target_3r, 2)
                     ),
 
-                    "partial_exit_done": partial_exit_done
+                    "partial_exit_2r": partial_exit_2r,
+
+                    "partial_exit_3r": partial_exit_3r
                 }
             )
 
