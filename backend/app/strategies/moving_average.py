@@ -3,6 +3,22 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.database.models import MarketData
+from app.utils.price_buffer import apply_entry_stop_buffer
+from app.config.strategy_config import StrategyConfig
+
+config = StrategyConfig()
+
+pullback_percent = config.pullback_percent
+
+volume_multiplier = config.volume_multiplier
+
+max_body_percent = config.max_body_percent
+
+max_upper_wick_ratio = config.max_upper_wick_ratio
+
+min_lower_wick_ratio = config.min_lower_wick_ratio
+
+max_breakout_wait = config.breakout_wait
 
 
 class MovingAverageStrategy:
@@ -137,17 +153,9 @@ class MovingAverageStrategy:
         partial_exit_3r = False
 
         breakout_candle_count = 0
-
-        max_breakout_wait = 5
-
-        # Maximum distance allowed from MA15
-        pullback_percent = 1.5
-        volume_multiplier = 0.5
-        max_body_percent = 3.0
-
-        max_upper_wick_ratio = 1.0
-
-        min_lower_wick_ratio = 0.20
+        
+        entry_buffer_enabled = False
+        stoploss_buffer_enabled = False
 
         for index,row in df.iterrows():
 
@@ -430,6 +438,29 @@ class MovingAverageStrategy:
 
                             stop_loss = support_low
 
+                            #
+                            # Apply Entry / Stop Buffer
+                            #
+
+                            entry_price, stop_loss = apply_entry_stop_buffer(
+
+                                entry_price,
+
+                                stop_loss,
+
+                                entry_enabled=entry_buffer_enabled,
+                                stop_enabled=stoploss_buffer_enabled
+
+                            )
+
+                            buffer_used = entry_price - max(
+
+                                support_high,
+
+                                row["open"]
+
+                            )
+
                             current_stop_loss = stop_loss
 
                             waiting_breakout = False
@@ -660,7 +691,16 @@ class MovingAverageStrategy:
 
                     "partial_exit_2r": partial_exit_2r,
 
-                    "partial_exit_3r": partial_exit_3r
+                    "partial_exit_3r": partial_exit_3r,
+                    "buffer": (
+
+                        None
+
+                        if entry_price is None
+
+                        else round(buffer_used, 2)
+
+                    )
                 }
             )
 

@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.backtesting.backtest_engine import BacktestEngine
+from app.backtesting.portfolio_engine import PortfolioEngine
 
 
 class BacktestService:
@@ -8,6 +9,8 @@ class BacktestService:
     def __init__(self):
 
         self.engine = BacktestEngine()
+
+        self.portfolio_engine = PortfolioEngine()
 
     def load_signals(
         self,
@@ -58,7 +61,7 @@ class BacktestService:
         db: Session,
         symbols: list
     ):
-        return self.engine.portfolio_metrics(
+        return self.portfolio_engine.load_all_trades(
             db,
             symbols
         )
@@ -68,9 +71,13 @@ class BacktestService:
         db: Session,
         symbols: list
     ):
-        return self.engine.execute_portfolio(
+
+        return self.portfolio_engine.execute_portfolio(
+
             db,
+
             symbols
+
         )
     
     def equity_curve(

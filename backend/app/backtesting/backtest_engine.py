@@ -1,6 +1,11 @@
 from sqlalchemy.orm import Session
 
 from app.strategies.moving_average import MovingAverageStrategy
+from app.config.backtest_config import BacktestConfig
+
+config = BacktestConfig()
+
+initial_capital = config.initial_capital
 
 
 class BacktestEngine:
@@ -9,7 +14,7 @@ class BacktestEngine:
 
         self.strategy = MovingAverageStrategy()
 
-        self.initial_capital = 100000
+        self.initial_capital = initial_capital
 
         self.risk_percent = 1
 
@@ -525,6 +530,10 @@ class BacktestEngine:
 
         portfolio_trades = []
 
+        #
+        # Collect trades
+        #
+
         for symbol in symbols:
 
             trades = self.execute_trades(
@@ -538,8 +547,14 @@ class BacktestEngine:
 
             portfolio_trades.extend(trades)
 
+        #
+        # Sort by ENTRY DATE
+        #
+
         portfolio_trades.sort(
-            key=lambda x: x["exit_date"]
+
+            key=lambda trade: trade["entry_date"]
+
         )
 
         return portfolio_trades

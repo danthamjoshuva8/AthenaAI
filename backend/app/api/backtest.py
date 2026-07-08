@@ -102,3 +102,18 @@ def portfolio_metrics(
         db,
         symbols
     )
+
+@router.get("/portfolio/timeline")
+def portfolio_timeline(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.execute_portfolio(
+
+        db,
+
+        symbols
+
+    )
