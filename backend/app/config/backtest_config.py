@@ -13,7 +13,7 @@ class BacktestConfig : #
     # Capital Modes
     #
 
-    capital_mode : str = "fixed"
+    capital_mode : str = "compound"
     # fixed
     # compound
     # profit_only
@@ -22,7 +22,7 @@ class BacktestConfig : #
     # Capital Update
     #
 
-    capital_update : str = "trade"
+    capital_update : str = "daily"
     # trade
     # daily
     # weekly
@@ -31,7 +31,7 @@ class BacktestConfig : #
     # Capital Check
     #
 
-    capital_check : bool = False
+    capital_check : bool = True
 
     #
     # Margin

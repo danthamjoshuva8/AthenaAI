@@ -13,6 +13,7 @@ class BacktestEngine:
     def __init__(self):
 
         self.strategy = MovingAverageStrategy()
+        self.config = BacktestConfig()
 
         self.initial_capital = initial_capital
 

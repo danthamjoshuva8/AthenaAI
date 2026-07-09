@@ -1,16 +1,36 @@
 # AthenaAI
 
-AI-powered investment platform.
+AthenaAI is an AI-powered swing and positional trading platform designed for Indian stock markets.
 
-## Features
+## Vision
 
-- Swing Trading
-- Intraday Trading
-- Portfolio Management
-- Mutual Funds
-- Backtesting
-- Paper Trading
-- AI Agents
-- Risk Management
+Build a production-grade automated trading platform capable of:
 
-Status: 🚧 Under Development
+- Rule-based trading
+- Portfolio management
+- Paper trading
+- Live trading
+- AI-assisted trade validation
+- Continuous learning
+
+## Technology
+
+- FastAPI
+- PostgreSQL
+- SQLAlchemy
+- Python
+- Yahoo Finance
+- Dhan API
+- React (Future)
+
+## Documentation
+
+See the `docs` folder for:
+
+- Roadmap
+- Current Status
+- Architecture
+- Features
+- Strategies
+- APIs
+- Future Ideas

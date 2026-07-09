@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.backtesting.backtest_engine import BacktestEngine
 from app.backtesting.portfolio_engine import PortfolioEngine
+from app.config.backtest_config import BacktestConfig
 
 
 class BacktestService:
@@ -100,4 +101,33 @@ class BacktestService:
         return self.engine.drawdown_metrics(
             db,
             symbol
+        )
+    
+    def portfolio_summary(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.portfolio_summary(
+            db,
+            symbols
+        )
+    
+    def update_config(
+        self,
+        config: BacktestConfig
+    ):
+
+        self.portfolio_engine.config = config
+
+    def portfolio_statistics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.portfolio_statistics(
+            db,
+            symbols
         )
