@@ -1,13 +1,25 @@
 from sqlalchemy.orm import Session
 
 from app.strategies.moving_average import MovingAverageStrategy
+from app.config.backtest_config import BacktestConfig
+from app.strategies.strategy_factory import StrategyFactory
 
 
 class StrategyService:
 
     def __init__(self):
 
-        self.strategy = MovingAverageStrategy()
+        self.config = BacktestConfig()
+
+        self.factory = StrategyFactory()
+
+        self.strategy = self.factory.create_strategy(
+
+            self.config.strategy.strategy_name,
+
+            self.config
+
+        )
 
     def load_data(
         self,

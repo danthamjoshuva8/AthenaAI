@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from app.models.strategy_parameters import StrategyParameters
 
 @dataclass
 class BacktestConfig : #
@@ -8,6 +9,14 @@ class BacktestConfig : #
     initial_capital : float = 100000
 
     risk_percent : float = 1.0
+
+    #
+    # Strategy Parameters
+    #
+
+    strategy: StrategyParameters = field(
+        default_factory=StrategyParameters
+    )
 
     #
     # Capital Modes

@@ -4,17 +4,28 @@ from app.backtesting.backtest_engine import BacktestEngine
 from app.backtesting.trade_decision import TradeDecision
 from app.config.backtest_config import BacktestConfig
 from app.backtesting.trading_cost_engine import TradingCostEngine
+from app.backtesting.market_condition_engine import MarketConditionEngine
+from app.backtesting.sector_engine import SectorEngine
+from app.backtesting.parameter_optimizer import ParameterOptimizer
 
 
 class PortfolioEngine:
 
     def __init__(self):
 
-        self.backtest_engine = BacktestEngine()
-
         self.config = BacktestConfig()
 
+        self.backtest_engine = BacktestEngine(
+            self.config
+        )
+
         self.cost_engine = TradingCostEngine()
+
+        self.market_engine = MarketConditionEngine()
+
+        self.sector_engine = SectorEngine()
+
+        self.optimizer = ParameterOptimizer()
 
     def load_all_trades(
         self,
@@ -128,10 +139,17 @@ class PortfolioEngine:
 
             )
 
+        priority = {
+            "SELL": 0,
+            "SELL_2R": 1,
+            "BUY": 2
+        }
+
         timeline.sort(
-
-            key=lambda event: event["date"]
-
+            key=lambda event: (
+                event["date"],
+                priority[event["type"]]
+            )
         )
 
         return timeline
@@ -317,25 +335,44 @@ class PortfolioEngine:
 
                 locked_capital += capital_required
 
+                capital_limit = portfolio_value
+
+                if self.config.capital_mode != "compound":
+                    capital_limit = self.config.initial_capital
+
+                if (
+                    self.config.capital_check
+                    and locked_capital > capital_limit
+                ):
+                    raise Exception(
+                        f"""
+                Capital exceeded
+
+                Date: {event['date']}
+                Symbol: {symbol}
+
+                Locked Capital : {locked_capital}
+
+                Capital Limit : {capital_limit}
+
+                Available Cash : {available_cash}
+
+                Portfolio Value : {portfolio_value}
+                """
+                    )
+
                 executed_trades.append(trade)
 
             elif event["type"] == "SELL_2R":
 
-                released = (
-
-                    trade["entry_price"]
-
-                    * trade["sold_quantity"]
-
+                released = open_positions[symbol]["locked_capital"] * (
+                    trade["sold_quantity"] /
+                    trade["quantity"]
                 )
 
                 available_cash += released
-
                 locked_capital -= released
-
-                if symbol in open_positions:
-
-                    open_positions[symbol]["locked_capital"] -= released
+                open_positions[symbol]["locked_capital"] -= released
 
             #
             # FINAL EXIT
@@ -394,9 +431,35 @@ class PortfolioEngine:
                     portfolio_value += trade["profit"]
 
                     available_cash += trade["profit"]
+                    if available_cash < -0.01:
+                        raise Exception("Negative cash balance")
 
                 del open_positions[symbol]
 
+            #
+            # Portfolio Validation
+            #
+
+            total_assets = available_cash + locked_capital
+
+            if abs(total_assets - portfolio_value) > 1:
+
+                raise Exception(
+
+                    f"""
+            Portfolio mismatch
+
+            Date : {event['date']}
+
+            Portfolio : {portfolio_value}
+
+            Cash : {available_cash}
+
+            Locked : {locked_capital}
+
+            Total : {total_assets}
+            """
+                )
             portfolio_events.append(
 
                 {
@@ -612,23 +675,16 @@ class PortfolioEngine:
 
         utilization = []
 
-        initial_capital = self.config.initial_capital
-
         for event in timeline:
 
-            utilization.append(
+            portfolio_value = event["portfolio_value"]
 
-                (
-
-                    event["locked_capital"]
-
-                    / initial_capital
-
+            if portfolio_value > 0:
+                utilization.append(
+                    (event["locked_capital"] / portfolio_value) * 100
                 )
-
-                * 100
-
-            )
+            else:
+                utilization.append(0)
 
         average_utilization = (
 
@@ -697,3 +753,969 @@ class PortfolioEngine:
             )
 
         }
+    
+    def trade_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        trades = portfolio["executed_trades"]
+
+        gross_profit = 0
+
+        gross_loss = 0
+
+        winning = []
+
+        losing = []
+
+        for trade in trades:
+
+            profit = trade.get(
+                "net_profit",
+                trade["profit"]
+            )
+
+            if profit > 0:
+
+                gross_profit += profit
+
+                winning.append(profit)
+
+            else:
+
+                gross_loss += abs(profit)
+
+                losing.append(profit)
+
+        total = len(trades)
+
+        average_win = (
+
+            sum(winning) / len(winning)
+
+            if winning else 0
+
+        )
+
+        average_loss = (
+
+            abs(sum(losing)) / len(losing)
+
+            if losing else 0
+
+        )
+
+        expectancy = (
+
+            sum(
+
+                trade.get(
+                    "net_profit",
+                    trade["profit"]
+                )
+
+                for trade in trades
+
+            ) / total
+
+            if total else 0
+
+        )
+
+        profit_factor = (
+
+            gross_profit / gross_loss
+
+            if gross_loss else 0
+
+        )
+
+        return {
+
+            "total_trades": total,
+
+            "gross_profit": round(
+                gross_profit,
+                2
+            ),
+
+            "gross_loss": round(
+                gross_loss,
+                2
+            ),
+
+            "net_profit": round(
+                gross_profit - gross_loss,
+                2
+            ),
+
+            "profit_factor": round(
+                profit_factor,
+                2
+            ),
+
+            "average_win": round(
+                average_win,
+                2
+            ),
+
+            "average_loss": round(
+                average_loss,
+                2
+            ),
+
+            "expectancy": round(
+                expectancy,
+                2
+            ),
+
+            "largest_win": round(
+                max(winning) if winning else 0,
+                2
+            ),
+
+            "largest_loss": round(
+                min(losing) if losing else 0,
+                2
+            )
+
+        }
+    
+    def risk_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        trades = portfolio["executed_trades"]
+
+        consecutive_wins = 0
+        consecutive_losses = 0
+
+        max_consecutive_wins = 0
+        max_consecutive_losses = 0
+
+        current_wins = 0
+        current_losses = 0
+
+        equity = self.config.initial_capital
+
+        peak = equity
+
+        max_drawdown = 0
+
+        longest_drawdown = 0
+        current_drawdown = 0
+
+        for trade in trades:
+
+            profit = trade.get(
+                "net_profit",
+                trade["profit"]
+            )
+
+            #
+            # Win / Loss Streak
+            #
+
+            if profit > 0:
+
+                current_wins += 1
+                current_losses = 0
+
+            else:
+
+                current_losses += 1
+                current_wins = 0
+
+            max_consecutive_wins = max(
+                max_consecutive_wins,
+                current_wins
+            )
+
+            max_consecutive_losses = max(
+                max_consecutive_losses,
+                current_losses
+            )
+
+            #
+            # Equity
+            #
+
+            equity += profit
+
+            if equity > peak:
+
+                peak = equity
+
+                current_drawdown = 0
+
+            else:
+
+                current_drawdown += 1
+
+                longest_drawdown = max(
+                    longest_drawdown,
+                    current_drawdown
+                )
+
+                drawdown = (
+
+                    (peak - equity)
+
+                    / peak
+
+                ) * 100
+
+                max_drawdown = max(
+                    max_drawdown,
+                    drawdown
+                )
+
+        return {
+
+            "max_consecutive_wins": max_consecutive_wins,
+
+            "max_consecutive_losses": max_consecutive_losses,
+
+            "max_drawdown_percent": round(
+                max_drawdown,
+                2
+            ),
+
+            "longest_drawdown_trades": longest_drawdown,
+
+            "ending_equity": round(
+                equity,
+                2
+            )
+
+        }
+    
+    def holding_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        trades = portfolio["executed_trades"]
+
+        holding_days = []
+
+        winning_days = []
+
+        losing_days = []
+
+        for trade in trades:
+
+            days = trade["holding_days"]
+
+            holding_days.append(days)
+
+            profit = trade.get(
+                "net_profit",
+                trade["profit"]
+            )
+
+            if profit > 0:
+
+                winning_days.append(days)
+
+            else:
+
+                losing_days.append(days)
+
+        return {
+
+            "average_holding_days": round(
+
+                sum(holding_days) / len(holding_days),
+
+                2
+
+            ) if holding_days else 0,
+
+            "average_winning_days": round(
+
+                sum(winning_days) / len(winning_days),
+
+                2
+
+            ) if winning_days else 0,
+
+            "average_losing_days": round(
+
+                sum(losing_days) / len(losing_days),
+
+                2
+
+            ) if losing_days else 0,
+
+            "maximum_holding_days": max(
+                holding_days
+            ) if holding_days else 0,
+
+            "minimum_holding_days": min(
+                holding_days
+            ) if holding_days else 0
+
+        }
+    
+    def monthly_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        trades = portfolio["executed_trades"]
+
+        monthly = {}
+
+        for trade in trades:
+
+            date = trade["exit_date"]
+
+            key = f"{date.year}-{date.month:02d}"
+
+            if key not in monthly:
+
+                monthly[key] = {
+
+                    "trades": 0,
+
+                    "wins": 0,
+
+                    "losses": 0,
+
+                    "profit": 0
+
+                }
+
+            profit = trade.get(
+                "net_profit",
+                trade["profit"]
+            )
+
+            monthly[key]["trades"] += 1
+
+            monthly[key]["profit"] += profit
+
+            if profit > 0:
+
+                monthly[key]["wins"] += 1
+
+            else:
+
+                monthly[key]["losses"] += 1
+
+        report = []
+
+        for month, data in sorted(monthly.items()):
+
+            report.append({
+
+                "month": month,
+
+                "trades": data["trades"],
+
+                "wins": data["wins"],
+
+                "losses": data["losses"],
+
+                "win_rate": round(
+
+                    data["wins"]
+
+                    / data["trades"]
+
+                    * 100,
+
+                    2
+
+                ),
+
+                "profit": round(
+                    data["profit"],
+                    2
+                )
+
+            })
+
+        return report
+    
+    def yearly_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        trades = portfolio["executed_trades"]
+
+        yearly = {}
+
+        for trade in trades:
+
+            year = trade["exit_date"].year
+
+            if year not in yearly:
+
+                yearly[year] = {
+
+                    "trades": 0,
+
+                    "wins": 0,
+
+                    "losses": 0,
+
+                    "profit": 0
+
+                }
+
+            profit = trade.get(
+                "net_profit",
+                trade["profit"]
+            )
+
+            yearly[year]["trades"] += 1
+
+            yearly[year]["profit"] += profit
+
+            if profit > 0:
+
+                yearly[year]["wins"] += 1
+
+            else:
+
+                yearly[year]["losses"] += 1
+
+        report = []
+
+        for year, data in sorted(yearly.items()):
+
+            report.append(
+
+                {
+
+                    "year": year,
+
+                    "trades": data["trades"],
+
+                    "wins": data["wins"],
+
+                    "losses": data["losses"],
+
+                    "win_rate": round(
+
+                        data["wins"]
+
+                        / data["trades"]
+
+                        * 100,
+
+                        2
+
+                    ),
+
+                    "profit": round(
+
+                        data["profit"],
+
+                        2
+
+                    )
+
+                }
+
+            )
+
+        return report
+    
+    def market_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        trades = portfolio["executed_trades"]
+
+        report = {}
+
+        for trade in trades:
+
+            market = self.market_engine.classify_market(
+                trade
+            )
+
+            if market not in report:
+
+                report[market] = {
+
+                    "trades": 0,
+
+                    "wins": 0,
+
+                    "losses": 0,
+
+                    "profit": 0
+
+                }
+
+            report[market]["trades"] += 1
+
+            profit = trade.get(
+                "net_profit",
+                trade["profit"]
+            )
+
+            report[market]["profit"] += profit
+
+            if profit > 0:
+
+                report[market]["wins"] += 1
+
+            else:
+
+                report[market]["losses"] += 1
+
+        result = []
+
+        for market, data in report.items():
+
+            result.append({
+
+                "market": market,
+
+                "trades": data["trades"],
+
+                "wins": data["wins"],
+
+                "losses": data["losses"],
+
+                "win_rate": round(
+
+                    data["wins"]
+
+                    / data["trades"]
+
+                    * 100,
+
+                    2
+
+                ),
+
+                "profit": round(
+                    data["profit"],
+                    2
+                )
+
+            })
+
+        return result
+    
+    def sector_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        trades = portfolio["executed_trades"]
+
+        sectors = {}
+
+        for trade in trades:
+
+            sector = self.sector_engine.get_sector(
+
+                trade["symbol"]
+
+            )
+
+            if sector not in sectors:
+
+                sectors[sector] = {
+
+                    "trades": 0,
+
+                    "wins": 0,
+
+                    "losses": 0,
+
+                    "profit": 0
+
+                }
+
+            profit = trade.get(
+
+                "net_profit",
+
+                trade["profit"]
+
+            )
+
+            sectors[sector]["trades"] += 1
+
+            sectors[sector]["profit"] += profit
+
+            if profit > 0:
+
+                sectors[sector]["wins"] += 1
+
+            else:
+
+                sectors[sector]["losses"] += 1
+
+        report = []
+
+        for sector, data in sectors.items():
+
+            report.append(
+
+                {
+
+                    "sector": sector,
+
+                    "trades": data["trades"],
+
+                    "wins": data["wins"],
+
+                    "losses": data["losses"],
+
+                    "win_rate": round(
+
+                        data["wins"]
+
+                        / data["trades"]
+
+                        * 100,
+
+                        2
+
+                    ),
+
+                    "profit": round(
+
+                        data["profit"],
+
+                        2
+
+                    )
+
+                }
+
+            )
+
+        return report
+    
+    def skipped_trade_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        executed = portfolio["executed_trades"]
+
+        skipped = portfolio["skipped_trades"]
+
+        missed_profit = 0
+
+        missed_loss = 0
+
+        profitable_skipped = 0
+
+        losing_skipped = 0
+
+        for trade in skipped:
+
+            profit = trade.get(
+                "net_profit",
+                trade["profit"]
+            )
+
+            if profit > 0:
+
+                profitable_skipped += 1
+
+                missed_profit += profit
+
+            else:
+
+                losing_skipped += 1
+
+                missed_loss += abs(profit)
+
+        return {
+
+            "total_opportunities":
+
+                len(executed) + len(skipped),
+
+            "executed_trades":
+
+                len(executed),
+
+            "skipped_trades":
+
+                len(skipped),
+
+            "profitable_skipped":
+
+                profitable_skipped,
+
+            "losing_skipped":
+
+                losing_skipped,
+
+            "missed_profit":
+
+                round(missed_profit,2),
+
+            "missed_loss":
+
+                round(missed_loss,2),
+
+            "net_missed":
+
+                round(
+
+                    missed_profit - missed_loss,
+
+                    2
+
+                )
+
+        }
+    
+    def capital_utilization_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        timeline = portfolio["timeline"]
+
+        utilization = []
+
+        cash = []
+
+        open_positions = []
+
+        for event in timeline:
+
+            portfolio_value = event["portfolio_value"]
+
+            if portfolio_value > 0:
+                utilization.append(
+                    (event["locked_capital"] / portfolio_value) * 100
+                )
+            else:
+                utilization.append(0)
+
+            cash.append(
+
+                event["available_cash"]
+
+            )
+
+            open_positions.append(
+
+                event["open_positions"]
+
+            )
+
+        return {
+
+            "average_utilization": round(
+
+                sum(utilization)
+
+                / len(utilization),
+
+                2
+
+            ) if utilization else 0,
+
+            "maximum_utilization": round(
+
+                max(utilization),
+
+                2
+
+            ) if utilization else 0,
+
+            "minimum_utilization": round(
+
+                min(utilization),
+
+                2
+
+            ) if utilization else 0,
+
+            "average_available_cash": round(
+
+                sum(cash)
+
+                / len(cash),
+
+                2
+
+            ) if cash else 0,
+
+            "minimum_available_cash": round(
+
+                min(cash),
+
+                2
+
+            ) if cash else 0,
+
+            "maximum_open_positions": max(
+
+                open_positions
+
+            ) if open_positions else 0,
+
+            "average_open_positions": round(
+
+                sum(open_positions)
+
+                / len(open_positions),
+
+                2
+
+            ) if open_positions else 0
+
+        }
+
+    def overlap_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        portfolio = self.execute_portfolio(
+            db,
+            symbols
+        )
+
+        timeline = portfolio["timeline"]
+
+        overlap_distribution = {}
+
+        max_overlap = 0
+
+        for event in timeline:
+
+            positions = event["open_positions"]
+
+            max_overlap = max(
+                max_overlap,
+                positions
+            )
+
+            overlap_distribution[positions] = (
+
+                overlap_distribution.get(
+                    positions,
+                    0
+                ) + 1
+
+            )
+
+        report = []
+
+        total_events = len(timeline)
+
+        for positions in sorted(overlap_distribution.keys()):
+
+            count = overlap_distribution[positions]
+
+            report.append(
+
+                {
+
+                    "open_positions": positions,
+
+                    "events": count,
+
+                    "percentage": round(
+
+                        (count / total_events) * 100,
+
+                        2
+
+                    )
+
+                }
+
+            )
+
+        return {
+
+            "maximum_overlap": max_overlap,
+
+            "distribution": report
+
+        }
+    
+    def optimize_strategy(
+        self,
+        db,
+        symbols
+    ):
+
+        return self.optimizer.evaluate_configs(
+
+            self,
+
+            db,
+
+            symbols
+
+        )

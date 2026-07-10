@@ -9,7 +9,11 @@ class BacktestService:
 
     def __init__(self):
 
-        self.engine = BacktestEngine()
+        self.config = BacktestConfig()
+
+        self.engine = BacktestEngine(
+            self.config
+        )
 
         self.portfolio_engine = PortfolioEngine()
 
@@ -128,6 +132,133 @@ class BacktestService:
     ):
 
         return self.portfolio_engine.portfolio_statistics(
+            db,
+            symbols
+        )
+    
+    def trade_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.trade_analytics(
+            db,
+            symbols
+        )
+    
+    def risk_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.risk_analytics(
+            db,
+            symbols
+        )
+    
+    def holding_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.holding_analytics(
+            db,
+            symbols
+        )
+    
+    def monthly_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.monthly_analytics(
+            db,
+            symbols
+        )
+    
+    def yearly_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.yearly_analytics(
+            db,
+            symbols
+        )
+    
+    def market_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.market_analytics(
+            db,
+            symbols
+        )
+    
+    def sector_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.sector_analytics(
+
+            db,
+
+            symbols
+
+        )
+    
+    def skipped_trade_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.skipped_trade_analytics(
+
+            db,
+
+            symbols
+
+        )
+    
+    def capital_utilization_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.capital_utilization_analytics(
+            db,
+            symbols
+        )
+    
+    def overlap_analytics(
+        self,
+        db: Session,
+        symbols: list
+    ):
+
+        return self.portfolio_engine.overlap_analytics(
+            db,
+            symbols
+        )
+    
+    def optimize_strategy(
+        self,
+        db,
+        symbols
+    ):
+
+        return self.portfolio_engine.optimize_strategy(
             db,
             symbols
         )

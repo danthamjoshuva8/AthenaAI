@@ -2,20 +2,26 @@ from sqlalchemy.orm import Session
 
 from app.strategies.moving_average import MovingAverageStrategy
 from app.config.backtest_config import BacktestConfig
-
-config = BacktestConfig()
-
-initial_capital = config.initial_capital
+from app.strategies.strategy_factory import StrategyFactory
 
 
 class BacktestEngine:
 
-    def __init__(self):
+    def __init__(
+        self,
+        config: BacktestConfig
+    ):
 
-        self.strategy = MovingAverageStrategy()
-        self.config = BacktestConfig()
+        self.config = config
 
-        self.initial_capital = initial_capital
+        self.factory = StrategyFactory()
+        
+        self.strategy = self.factory.create_strategy(
+            self.config.strategy.strategy_name,
+            self.config
+        )
+
+        self.initial_capital = self.config.initial_capital
 
         self.risk_percent = 1
 

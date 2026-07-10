@@ -141,3 +141,141 @@ def portfolio_statistics(
         db,
         symbols
     )
+
+@router.get("/portfolio/trade-analytics")
+def trade_analytics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.trade_analytics(
+        db,
+        symbols
+    )
+
+@router.get("/portfolio/risk-analytics")
+def risk_analytics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.risk_analytics(
+        db,
+        symbols
+    )
+
+@router.get("/portfolio/holding-analytics")
+def holding_analytics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.holding_analytics(
+        db,
+        symbols
+    )
+
+@router.get("/portfolio/monthly-analytics")
+def monthly_analytics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.monthly_analytics(
+        db,
+        symbols
+    )
+
+@router.get("/portfolio/yearly-analytics")
+def yearly_analytics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.yearly_analytics(
+        db,
+        symbols
+    )
+
+@router.get("/portfolio/market-analytics")
+def market_analytics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.market_analytics(
+        db,
+        symbols
+    )
+
+@router.get("/portfolio/sector-analytics")
+def sector_analytics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.sector_analytics(
+
+        db,
+
+        symbols
+
+    )
+
+@router.get("/portfolio/skipped-trade-analytics")
+def skipped_trade_analytics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.skipped_trade_analytics(
+
+        db,
+
+        symbols
+
+    )
+
+@router.get("/portfolio/capital-utilization")
+def capital_utilization(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.capital_utilization_analytics(
+        db,
+        symbols
+    )
+
+@router.get("/portfolio/overlap-analytics")
+def overlap_analytics(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.overlap_analytics(
+        db,
+        symbols
+    )
+
+@router.get("/portfolio/optimize")
+def optimize(
+    db: Session = Depends(get_db)
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.optimize_strategy(
+        db,
+        symbols
+    )

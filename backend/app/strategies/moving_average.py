@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.database.models import MarketData
 from app.utils.price_buffer import apply_entry_stop_buffer
 from app.config.strategy_config import StrategyConfig
+from app.config.backtest_config import BacktestConfig
 
 config = StrategyConfig()
 
@@ -22,6 +23,13 @@ max_breakout_wait = config.breakout_wait
 
 
 class MovingAverageStrategy:
+
+    def __init__(
+        self,
+        config: BacktestConfig
+    ):
+
+        self.config = config
 
     def load_market_data(
         self,
@@ -79,34 +87,28 @@ class MovingAverageStrategy:
 
         ])
 
-        df["MA15"] = (
+        short_ma = self.config.strategy.short_ma
 
+        medium_ma = self.config.strategy.medium_ma
+
+        long_ma = self.config.strategy.long_ma
+
+        df["MA_SHORT"] = (
             df["close"]
-
-            .rolling(15)
-
+            .rolling(short_ma)
             .mean()
-
         )
 
-        df["MA30"] = (
-
+        df["MA_MEDIUM"] = (
             df["close"]
-
-            .rolling(30)
-
+            .rolling(medium_ma)
             .mean()
-
         )
 
-        df["MA150"] = (
-
+        df["MA_LONG"] = (
             df["close"]
-
-            .rolling(150)
-
+            .rolling(long_ma)
             .mean()
-
         )
 
         df["VOLUME20"] = (
@@ -173,9 +175,11 @@ class MovingAverageStrategy:
 
             sell_condition = False
 
-            ma15 = row["MA15"]
-            ma30 = row["MA30"]
-            ma150 = row["MA150"]
+            ma15 = row["MA_SHORT"]
+
+            ma30 = row["MA_MEDIUM"]
+
+            ma150 = row["MA_LONG"]
 
             distance_from_ma = None
             near_ma15 = False
