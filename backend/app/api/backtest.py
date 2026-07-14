@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.services.backtest_service import BacktestService
 from app.utils.nifty200 import get_nifty200_symbols
+from app.database.models import MarketData
 
 router = APIRouter(
     prefix="/backtest",
@@ -278,4 +279,34 @@ def optimize(
     return service.optimize_strategy(
         db,
         symbols
+    )
+
+@router.get("/portfolio/walk-forward")
+def walk_forward(
+    db: Session = Depends(get_db)
+):
+
+    return service.walk_forward_analysis(
+        db
+    )
+
+@router.get("/portfolio/monte-carlo")
+def monte_carlo(
+
+    simulations: int = 1000,
+
+    db: Session = Depends(get_db)
+
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.monte_carlo_analysis(
+
+        db,
+
+        symbols,
+
+        simulations
+
     )

@@ -283,3 +283,40 @@ class MarketService:
             "failed": failed
 
         }
+    
+    def clear_market_data(
+        self,
+        db: Session
+    ):
+        
+        count = db.query(MarketData).count()
+
+        print("Rows before delete:", count)
+
+        deleted = db.query(MarketData).delete()
+
+        print("Deleted:", deleted)
+
+        db.commit()
+
+        count_after = db.query(MarketData).count()
+
+        print("Rows after delete:", count_after)
+
+        deleted = (
+
+            db.query(MarketData)
+
+            .delete()
+
+        )
+
+        db.commit()
+
+        return {
+
+            "message": "Market data cleared successfully",
+
+            "rows_deleted": deleted
+
+        }

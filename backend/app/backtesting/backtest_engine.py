@@ -1,3 +1,5 @@
+from unittest import signals
+
 from sqlalchemy.orm import Session
 
 from app.strategies.moving_average import MovingAverageStrategy
@@ -36,12 +38,16 @@ class BacktestEngine:
     def load_signals(
         self,
         db: Session,
-        symbol: str
+        symbol: str,
+        start_date=None,
+        end_date=None
     ):
 
         return self.strategy.generate_signals(
             db,
-            symbol
+            symbol,
+            start_date,
+            end_date
         )
 
     def _open_position(
@@ -497,13 +503,17 @@ class BacktestEngine:
 
     def simulate_positions(
         self,
-        db: Session,
-        symbol: str
+        db,
+        symbol,
+        start_date=None,
+        end_date=None
     ):
 
         signals = self.load_signals(
             db,
-            symbol
+            symbol,
+            start_date,
+            end_date
         )
 
         positions, _ = self._process_signals(
@@ -514,14 +524,27 @@ class BacktestEngine:
     
     def execute_trades(
         self,
-        db: Session,
-        symbol: str
+        db,
+        symbol,
+        start_date=None,
+        end_date=None
     ):
 
         signals = self.load_signals(
             db,
-            symbol
+            symbol,
+            start_date,
+            end_date
         )
+
+        print("=" * 60)
+        print(symbol)
+        print("Signals:", len(signals))
+        print("Start:", start_date)
+        print("End:", end_date)
+
+        if len(signals) == 0:
+            return []
 
         _, trades = self._process_signals(
             signals
@@ -531,8 +554,10 @@ class BacktestEngine:
     
     def execute_portfolio(
         self,
-        db: Session,
-        symbols: list
+        db,
+        symbols,
+        start_date=None,
+        end_date=None
     ):
 
         portfolio_trades = []
@@ -545,7 +570,9 @@ class BacktestEngine:
 
             trades = self.execute_trades(
                 db,
-                symbol
+                symbol,
+                start_date,
+                end_date
             )
 
             for trade in trades:

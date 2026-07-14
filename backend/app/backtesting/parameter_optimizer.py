@@ -135,4 +135,102 @@ class ParameterOptimizer:
 
             result["rank"] = rank
 
-        return results
+        return self.optimization_summary(
+            results
+        )
+    
+    def optimization_summary(
+        self,
+        results
+    ):
+
+        if not results:
+
+            return {}
+
+        total = len(results)
+
+        best = results[0]
+
+        worst = results[-1]
+
+        comparison = self.compare_strategies(
+            best,
+            worst
+        )
+
+        average_profit = round(
+
+            sum(
+                result["net_profit"]
+                for result in results
+            ) / total,
+
+            2
+
+        )
+
+        average_win_rate = round(
+
+            sum(
+                result["win_rate"]
+                for result in results
+            ) / total,
+
+            2
+
+        )
+
+        return {
+
+            "total_configurations": total,
+
+            "best_strategy": best,
+
+            "worst_strategy": worst,
+
+            "comparison": comparison,
+
+            "average_net_profit": average_profit,
+
+            "average_win_rate": average_win_rate,
+
+            "results": results
+
+        }
+    
+    def compare_strategies(
+        self,
+        best,
+        worst
+    ):
+
+        return {
+
+            "profit_difference": round(
+                best["net_profit"] - worst["net_profit"],
+                2
+            ),
+
+            "win_rate_difference": round(
+                best["win_rate"] - worst["win_rate"],
+                2
+            ),
+
+            "trade_difference":
+
+                best["total_trades"] -
+
+                worst["total_trades"],
+
+            "better_parameters": {
+
+                "short_ma": best["short_ma"],
+
+                "medium_ma": best["medium_ma"],
+
+                "long_ma": best["long_ma"]
+
+            }
+
+        }

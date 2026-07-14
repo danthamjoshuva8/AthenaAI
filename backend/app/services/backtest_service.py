@@ -262,3 +262,34 @@ class BacktestService:
             db,
             symbols
         )
+    
+    def walk_forward_analysis(
+        self,
+        db
+    ):
+
+        return self.portfolio_engine.walk_forward_analysis(
+            db
+        )
+    
+    def monte_carlo_analysis(
+
+        self,
+
+        db,
+
+        symbols,
+
+        simulations=1000
+
+    ):
+
+        return self.portfolio_engine.monte_carlo_analysis(
+
+            db,
+
+            symbols,
+
+            simulations
+
+        )

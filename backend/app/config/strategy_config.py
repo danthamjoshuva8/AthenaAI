@@ -8,11 +8,11 @@ class StrategyConfig:
     # Moving Averages
     #
 
-    ma_fast = 15
+    ma_fast = 10
 
-    ma_medium = 30
+    ma_medium = 20
 
-    ma_slow = 150
+    ma_slow = 100
 
     #
     # Pullback

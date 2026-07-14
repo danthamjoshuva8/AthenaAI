@@ -7,6 +7,11 @@ from app.backtesting.trading_cost_engine import TradingCostEngine
 from app.backtesting.market_condition_engine import MarketConditionEngine
 from app.backtesting.sector_engine import SectorEngine
 from app.backtesting.parameter_optimizer import ParameterOptimizer
+from app.utils.report_exporter import ReportExporter
+from app.utils.nifty200 import get_nifty200_symbols
+from datetime import date
+from app.backtesting.walk_forward_optimizer import WalkForwardOptimizer
+from app.backtesting.monte_carlo_engine import MonteCarloEngine
 
 
 class PortfolioEngine:
@@ -26,6 +31,12 @@ class PortfolioEngine:
         self.sector_engine = SectorEngine()
 
         self.optimizer = ParameterOptimizer()
+
+        self.report_exporter = ReportExporter()
+
+        self.walk_forward_optimizer = WalkForwardOptimizer()
+
+        self.monte_carlo_engine = MonteCarloEngine()
 
     def load_all_trades(
         self,
@@ -1710,12 +1721,430 @@ class PortfolioEngine:
         symbols
     ):
 
-        return self.optimizer.evaluate_configs(
+        results = self.optimizer.evaluate_configs(
+            self,
+            db,
+            symbols
+        )
+
+        report_path = self.report_exporter.export_csv(results)
+
+        return {
+
+            "report": report_path,
+
+            "results": results
+
+        }
+    
+    def generate_walk_forward_windows(
+        self,
+        start_year: int,
+        end_year: int
+    ):
+
+        windows = []
+
+        #
+        # Need at least 1 training year
+        #
+
+        for train_end in range(
+            start_year,
+            end_year
+        ):
+
+            windows.append(
+
+                {
+
+                    "train_start": start_year,
+
+                    "train_end": train_end,
+
+                    "test_year": train_end + 1
+
+                }
+
+            )
+
+        return windows
+    
+    def walk_forward_analysis(
+        self,
+        db
+    ):
+
+        windows = self.generate_walk_forward_windows(
+
+            2022,
+
+            2026
+
+        )
+
+        results = []
+
+        optimization_history = []
+
+        for window in windows:
+
+            result = self.execute_walk_forward_window(
+
+                db,
+
+                window["train_start"],
+
+                window["train_end"],
+
+                window["test_year"]
+
+            )
+
+            optimization_history.append(
+
+                {
+
+                    "training_period": (
+
+                        f"{window['train_start']}"
+
+                        f"-"
+
+                        f"{window['train_end']}"
+
+                    ),
+
+                    "test_year": window["test_year"],
+
+                    "best_parameters": result["best_parameters"]
+
+                }
+
+            )
+
+            results.append(result)
+
+        average_profit = round(
+
+            sum(
+
+                result["net_profit"]
+
+                for result in results
+
+            ) / len(results),
+
+            2
+
+        ) if results else 0
+
+        average_win_rate = round(
+
+            sum(
+
+                result["win_rate"]
+
+                for result in results
+
+            ) / len(results),
+
+            2
+
+        ) if results else 0
+
+        best_window = max(
+
+            results,
+
+            key=lambda x: x["net_profit"],
+
+            default=None
+
+        )
+
+        return {
+
+            "total_windows": len(results),
+
+            "average_profit": average_profit,
+
+            "average_win_rate": average_win_rate,
+
+            "best_window": best_window,
+
+            "optimization_history": optimization_history,
+
+            "results": results
+
+        }
+
+    def execute_walk_forward_window(
+        self,
+        db,
+        train_start,
+        train_end,
+        test_year
+    ):
+
+        symbols = get_nifty200_symbols()
+
+        #
+        # Optimize using training period
+        #
+
+        best_parameters = (
+
+            self.walk_forward_optimizer.optimize(
+
+                self,
+
+                db,
+
+                symbols,
+
+                train_start,
+
+                train_end
+
+            )
+
+        )
+
+        #
+        # Execute only on test year
+        #
+
+        start_date = date(
+            test_year,
+            1,
+            1
+        )
+
+        end_date = date(
+            test_year,
+            12,
+            31
+        )
+
+        print("=" * 80)
+
+        print(
+            f"Training : {train_start}-{train_end}"
+        )
+
+        print(
+            f"Testing  : {test_year}"
+        )
+
+        print(
+            f"Using MA : "
+            f"{best_parameters['short_ma']} / "
+            f"{best_parameters['medium_ma']} / "
+            f"{best_parameters['long_ma']}"
+        )
+
+        trades = []
+
+        for symbol in symbols:
+
+            try:
+
+                symbol_trades = self.backtest_engine.execute_trades(
+                    db,
+                    symbol,
+                    start_date,
+                    end_date
+                )
+
+                trades.extend(symbol_trades)
+
+            except Exception as ex:
+
+                print(f"Skipping {symbol}: {ex}")
+
+        winning_trades = sum(
+
+            1
+
+            for trade in trades
+
+            if trade["profit"] > 0
+
+        )
+
+        losing_trades = len(trades) - winning_trades
+
+        win_rate = (
+
+            round(
+
+                winning_trades * 100 / len(trades),
+
+                2
+
+            )
+
+            if trades
+
+            else 0
+
+        )
+
+        average_profit = (
+
+            round(
+
+                sum(
+
+                    trade["profit"]
+
+                    for trade in trades
+
+                ) / len(trades),
+
+                2
+
+            )
+
+            if trades
+
+            else 0
+
+        )
+
+        best_trade = (
+
+            round(
+
+                max(
+
+                    trade["profit"]
+
+                    for trade in trades
+
+                ),
+
+                2
+
+            )
+
+            if trades
+
+            else 0
+
+        )
+
+        worst_trade = (
+
+            round(
+
+                min(
+
+                    trade["profit"]
+
+                    for trade in trades
+
+                ),
+
+                2
+
+            )
+
+            if trades
+
+            else 0
+
+        )
+
+        self.walk_forward_optimizer.restore_original_parameters(
 
             self,
 
-            db,
+            best_parameters["original_parameters"]
 
-            symbols
+        )
+
+        return {
+
+            "train_start": train_start,
+
+            "train_end": train_end,
+
+            "test_year": test_year,
+
+            "best_parameters": best_parameters,
+
+            "total_trades": len(trades),
+
+            "winning_trades": winning_trades,
+
+            "losing_trades": losing_trades,
+
+            "win_rate": win_rate,
+
+            "net_profit": round(
+
+                sum(
+
+                    trade["profit"]
+
+                    for trade in trades
+
+                ),
+
+                2
+
+            ),
+
+            "average_profit": average_profit,
+
+            "best_trade": best_trade,
+
+            "worst_trade": worst_trade
+
+        }
+    
+    def monte_carlo_analysis(
+
+        self,
+
+        db,
+
+        symbols,
+
+        simulations=1000
+
+    ):
+
+        trades = []
+
+        for symbol in symbols:
+
+            try:
+
+                symbol_trades = self.backtest_engine.execute_trades(
+
+                    db,
+
+                    symbol
+
+                )
+
+                trades.extend(
+
+                    symbol_trades
+
+                )
+
+            except Exception:
+
+                continue
+
+        return self.monte_carlo_engine.simulation_summary(
+
+            trades,
+
+            simulations
 
         )

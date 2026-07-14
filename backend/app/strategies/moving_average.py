@@ -34,19 +34,47 @@ class MovingAverageStrategy:
     def load_market_data(
         self,
         db: Session,
-        symbol: str
+        symbol: str,
+        start_date=None,
+        end_date=None
     ):
 
-        data = (
+        query = (
 
             db.query(MarketData)
 
             .filter(
+
                 MarketData.symbol == symbol
+
             )
 
+        )
+
+        if start_date:
+
+            query = query.filter(
+
+                MarketData.date >= start_date
+
+            )
+
+        if end_date:
+
+            query = query.filter(
+
+                MarketData.date <= end_date
+
+            )
+
+        data = (
+
+            query
+
             .order_by(
+
                 MarketData.date
+
             )
 
             .all()
@@ -58,13 +86,23 @@ class MovingAverageStrategy:
     def calculate_moving_averages(
         self,
         db: Session,
-        symbol: str
+        symbol: str,
+        start_date=None,
+        end_date=None
     ):
 
         records = self.load_market_data(
             db,
-            symbol
+            symbol,
+            start_date,
+            end_date
         )
+
+        print(symbol)
+        print("Records:", len(records))
+
+        if len(records) == 0:
+            return pd.DataFrame()
 
         df = pd.DataFrame([
             {
@@ -87,11 +125,23 @@ class MovingAverageStrategy:
 
         ])
 
+        print(df.columns.tolist())
+        print(df.head())
+
+        print(symbol)
+        print("Rows:", len(df))
+
+        if df.empty:
+            return df
+
         short_ma = self.config.strategy.short_ma
 
         medium_ma = self.config.strategy.medium_ma
 
         long_ma = self.config.strategy.long_ma
+
+        if len(df) < long_ma:
+            return pd.DataFrame()
 
         df["MA_SHORT"] = (
             df["close"]
@@ -121,14 +171,21 @@ class MovingAverageStrategy:
     
     def generate_signals(
         self,
-        db: Session,
-        symbol: str
+        db,
+        symbol,
+        start_date=None,
+        end_date=None
     ):
 
         df = self.calculate_moving_averages(
             db,
-            symbol
+            symbol,
+            start_date,
+            end_date
         )
+
+        if df.empty:
+            return []
 
         signals = []
 

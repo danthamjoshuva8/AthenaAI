@@ -67,6 +67,15 @@ def market_statistics(
 
     return service.statistics(db)
 
+@router.delete("/clear")
+def clear_market_data(
+    db: Session = Depends(get_db)
+):
+
+    return service.clear_market_data(
+        db
+    )
+
 @router.delete("/{symbol}")
 def delete_symbol(
     symbol: str,

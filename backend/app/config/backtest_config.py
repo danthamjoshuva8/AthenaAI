@@ -60,3 +60,7 @@ class BacktestConfig : #
     brokerage : bool = False
 
     slippage : bool = False
+
+    start_date = None
+
+    end_date = None
