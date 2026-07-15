@@ -848,6 +848,30 @@ class PortfolioEngine:
 
         )
 
+        trade_values = self.calculate_average_trade_values(
+
+            trades
+
+        )
+
+        streaks = self.calculate_trade_streaks(
+
+            trades
+
+        )
+
+        distribution = self.calculate_trade_distribution(
+
+            trades
+
+        )
+
+        risk_metrics = self.calculate_risk_metrics(
+
+            trades
+
+        )
+
         return {
 
             "total_trades": total,
@@ -895,7 +919,63 @@ class PortfolioEngine:
             "largest_loss": round(
                 min(losing) if losing else 0,
                 2
-            )
+            ),
+
+            "expectancy":
+
+                self.calculate_expectancy(
+
+                    trades
+        
+                ),
+
+            "profit_factor":
+
+                self.calculate_profit_factor(
+
+                    trades
+
+                ),
+
+            "average_win":
+
+                trade_values["average_win"],
+
+            "average_loss":
+
+                trade_values["average_loss"],
+
+            "reward_risk_ratio":
+
+                self.calculate_reward_risk_ratio(
+
+                    trades
+
+                ),
+
+            "max_winning_streak":
+
+                streaks["max_winning_streak"],
+
+            "max_losing_streak":
+
+                streaks["max_losing_streak"],
+
+            "trade_distribution":
+
+                distribution,
+
+            "risk_metrics":
+
+                risk_metrics,
+
+            "trade_score":
+
+                self.calculate_trade_score(
+
+                    trades
+
+                )
 
         }
     
@@ -2146,5 +2226,823 @@ class PortfolioEngine:
             trades,
 
             simulations
+
+        )
+
+    def calculate_expectancy(
+
+        self,
+
+        trades
+
+    ):
+
+        if not trades:
+
+            return 0
+
+        winning_trades = [
+
+            trade
+
+            for trade in trades
+
+            if trade["profit"] > 0
+
+        ]
+
+        losing_trades = [
+
+            trade
+
+            for trade in trades
+
+            if trade["profit"] <= 0
+
+        ]
+
+        total_trades = len(
+
+            trades
+
+        )
+
+        win_rate = len(
+
+            winning_trades
+
+        ) / total_trades
+
+        loss_rate = len(
+
+            losing_trades
+
+        ) / total_trades
+
+        average_win = (
+
+            sum(
+
+                trade["profit"]
+
+                for trade in winning_trades
+
+            )
+
+            / len(
+
+                winning_trades
+
+            )
+
+            if winning_trades
+
+            else 0
+
+        )
+
+        average_loss = (
+
+            abs(
+
+                sum(
+
+                    trade["profit"]
+
+                    for trade in losing_trades
+
+                )
+
+            )
+
+            / len(
+
+                losing_trades
+
+            )
+
+            if losing_trades
+
+            else 0
+
+        )
+
+        expectancy = (
+
+            win_rate * average_win
+
+        ) - (
+
+            loss_rate * average_loss
+
+        )
+
+        return round(
+
+            expectancy,
+
+            2
+
+        )
+    
+    def calculate_profit_factor(
+
+        self,
+
+        trades
+
+    ):
+
+        if not trades:
+
+            return 0
+
+        gross_profit = sum(
+
+            trade["profit"]
+
+            for trade in trades
+
+            if trade["profit"] > 0
+
+        )
+
+        gross_loss = abs(
+
+            sum(
+
+                trade["profit"]
+
+                for trade in trades
+
+                if trade["profit"] < 0
+
+            )
+
+        )
+
+        if gross_loss == 0:
+
+            return 0
+
+        return round(
+
+            gross_profit / gross_loss,
+
+            2
+
+        )
+    
+    def calculate_average_trade_values(
+
+        self,
+
+        trades
+
+    ):
+
+        if not trades:
+
+            return {
+
+                "average_win": 0,
+
+                "average_loss": 0
+
+            }
+
+        winning_trades = [
+
+            trade
+
+            for trade in trades
+
+            if trade["profit"] > 0
+
+        ]
+
+        losing_trades = [
+
+            trade
+
+            for trade in trades
+
+            if trade["profit"] < 0
+
+        ]
+
+        average_win = (
+
+            sum(
+
+                trade["profit"]
+
+                for trade in winning_trades
+
+            )
+
+            /
+
+            len(
+
+                winning_trades
+
+            )
+
+            if winning_trades
+
+            else 0
+
+        )
+
+        average_loss = (
+
+            abs(
+
+                sum(
+
+                    trade["profit"]
+
+                    for trade in losing_trades
+
+                )
+
+            )
+
+            /
+
+            len(
+
+                losing_trades
+
+            )
+
+            if losing_trades
+
+            else 0
+
+        )
+
+        return {
+
+            "average_win": round(
+
+                average_win,
+
+                2
+
+            ),
+
+            "average_loss": round(
+
+                average_loss,
+
+                2
+
+            )
+
+        }
+    
+    def calculate_reward_risk_ratio(
+
+        self,
+
+        trades
+
+    ):
+
+        trade_values = self.calculate_average_trade_values(
+
+            trades
+
+        )
+
+        average_win = trade_values[
+
+            "average_win"
+
+        ]
+
+        average_loss = trade_values[
+
+            "average_loss"
+
+        ]
+
+        if average_loss == 0:
+
+            return 0
+
+        return round(
+
+            average_win / average_loss,
+
+            2
+
+        )
+
+    def calculate_trade_streaks(
+
+        self,
+
+        trades
+
+    ):
+
+        if not trades:
+
+            return {
+
+                "max_winning_streak": 0,
+
+                "max_losing_streak": 0
+
+            }
+
+        current_win = 0
+
+        current_loss = 0
+
+        max_win = 0
+
+        max_loss = 0
+
+        for trade in trades:
+
+            if trade["profit"] > 0:
+
+                current_win += 1
+
+                current_loss = 0
+
+            else:
+
+                current_loss += 1
+
+                current_win = 0
+
+            max_win = max(
+
+                max_win,
+
+                current_win
+
+            )
+
+            max_loss = max(
+
+                max_loss,
+
+                current_loss
+
+            )
+
+        return {
+
+            "max_winning_streak": max_win,
+
+            "max_losing_streak": max_loss
+
+        }
+    
+    def calculate_trade_distribution(
+
+        self,
+
+        trades
+
+    ):
+
+        distribution = {
+
+            "loss_greater_than_10": 0,
+
+            "loss_5_to_10": 0,
+
+            "loss_2_to_5": 0,
+
+            "loss_0_to_2": 0,
+
+            "profit_0_to_2": 0,
+
+            "profit_2_to_5": 0,
+
+            "profit_5_to_10": 0,
+
+            "profit_greater_than_10": 0
+
+        }
+
+        for trade in trades:
+
+            risk_percent = (
+
+                trade["profit"]
+
+                /
+
+                trade["entry_price"]
+
+            ) * 100
+
+            if risk_percent < -10:
+
+                distribution["loss_greater_than_10"] += 1
+
+            elif risk_percent < -5:
+
+                distribution["loss_5_to_10"] += 1
+
+            elif risk_percent < -2:
+
+                distribution["loss_2_to_5"] += 1
+
+            elif risk_percent < 0:
+
+                distribution["loss_0_to_2"] += 1
+
+            elif risk_percent < 2:
+
+                distribution["profit_0_to_2"] += 1
+
+            elif risk_percent < 5:
+
+                distribution["profit_2_to_5"] += 1
+
+            elif risk_percent < 10:
+
+                distribution["profit_5_to_10"] += 1
+
+            else:
+
+                distribution["profit_greater_than_10"] += 1
+
+        return distribution
+    
+    def calculate_risk_metrics(
+
+        self,
+
+        trades
+
+    ):
+
+        if not trades:
+
+            return {
+
+                "win_loss_ratio": 0,
+
+                "payoff_ratio": 0
+
+            }
+
+        winning_trades = [
+
+            trade
+
+            for trade in trades
+
+            if trade["profit"] > 0
+
+        ]
+
+        losing_trades = [
+
+            trade
+
+            for trade in trades
+
+            if trade["profit"] < 0
+
+        ]
+
+        total_wins = len(
+
+            winning_trades
+
+        )
+
+        total_losses = len(
+
+            losing_trades
+
+        )
+
+        average_win = (
+
+            sum(
+
+                trade["profit"]
+
+                for trade in winning_trades
+
+            )
+
+            /
+
+            total_wins
+
+            if total_wins
+
+            else 0
+
+        )
+
+        average_loss = (
+
+            abs(
+
+                sum(
+
+                    trade["profit"]
+
+                    for trade in losing_trades
+
+                )
+
+            )
+
+            /
+
+            total_losses
+
+            if total_losses
+
+            else 0
+
+        )
+
+        return {
+
+            "win_loss_ratio": round(
+
+                total_wins / total_losses,
+
+                2
+
+            ) if total_losses else 0,
+
+            "payoff_ratio": round(
+
+                average_win / average_loss,
+
+                2
+
+            ) if average_loss else 0
+
+        }
+    
+    def generate_trade_report(
+
+        self,
+
+        trades
+
+    ):
+
+        trade_values = self.calculate_average_trade_values(
+
+            trades
+
+        )
+
+        streaks = self.calculate_trade_streaks(
+
+            trades
+
+        )
+
+        distribution = self.calculate_trade_distribution(
+
+            trades
+
+        )
+
+        risk_metrics = self.calculate_risk_metrics(
+
+            trades
+
+        )
+
+        winning_trades = [
+
+            trade
+
+            for trade in trades
+
+            if trade["profit"] > 0
+
+        ]
+
+        losing_trades = [
+
+            trade
+
+            for trade in trades
+
+            if trade["profit"] < 0
+
+        ]
+
+        total_trades = len(
+
+            trades
+
+        )
+
+        return {
+
+            "summary": {
+
+                "total_trades": total_trades,
+
+                "winning_trades": len(
+
+                    winning_trades
+
+                ),
+
+                "losing_trades": len(
+
+                    losing_trades
+
+                ),
+
+                "win_rate": round(
+
+                    (
+
+                        len(
+
+                            winning_trades
+
+                        )
+
+                        /
+
+                        total_trades
+
+                        * 100
+
+                    ),
+
+                    2
+
+                ) if total_trades else 0
+
+            },
+
+            "performance": {
+
+                "expectancy":
+
+                    self.calculate_expectancy(
+
+                        trades
+
+                    ),
+
+                "profit_factor":
+
+                    self.calculate_profit_factor(
+
+                        trades
+
+                    ),
+
+                "average_win":
+
+                    trade_values["average_win"],
+
+                "average_loss":
+
+                    trade_values["average_loss"],
+
+                "reward_risk_ratio":
+
+                    self.calculate_reward_risk_ratio(
+
+                        trades
+
+                    )
+
+            },
+
+            "risk": {
+
+                **risk_metrics,
+
+                **streaks
+
+            },
+
+            "distribution":
+
+                distribution
+
+        }
+
+    def calculate_trade_score(
+
+        self,
+
+        trades
+
+    ):
+
+        if not trades:
+
+            return 0
+
+        expectancy = self.calculate_expectancy(
+
+            trades
+
+        )
+
+        profit_factor = self.calculate_profit_factor(
+
+            trades
+
+        )
+
+        reward_risk = self.calculate_reward_risk_ratio(
+
+            trades
+
+        )
+
+        winning_trades = sum(
+
+            1
+
+            for trade in trades
+
+            if trade["profit"] > 0
+
+        )
+
+        win_rate = (
+
+            winning_trades
+
+            * 100
+
+            / len(trades)
+
+        )
+
+        score = 0
+
+        #
+        # Win Rate
+        #
+
+        score += min(
+
+            win_rate,
+
+            30
+
+        )
+
+        #
+        # Profit Factor
+        #
+
+        score += min(
+
+            profit_factor * 10,
+
+            30
+
+        )
+
+        #
+        # Reward Risk
+        #
+
+        score += min(
+
+            reward_risk * 10,
+
+            20
+
+        )
+
+        #
+        # Expectancy
+        #
+
+        if expectancy > 0:
+
+            score += 20
+
+        return round(
+
+            score,
+
+            2
 
         )
