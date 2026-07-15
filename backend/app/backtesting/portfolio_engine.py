@@ -12,6 +12,7 @@ from app.utils.nifty200 import get_nifty200_symbols
 from datetime import date
 from app.backtesting.walk_forward_optimizer import WalkForwardOptimizer
 from app.backtesting.monte_carlo_engine import MonteCarloEngine
+from app.backtesting.strategy_intelligence import StrategyIntelligence
 
 
 class PortfolioEngine:
@@ -37,6 +38,8 @@ class PortfolioEngine:
         self.walk_forward_optimizer = WalkForwardOptimizer()
 
         self.monte_carlo_engine = MonteCarloEngine()
+
+        self.strategy_intelligence_engine = StrategyIntelligence()
 
     def load_all_trades(
         self,
@@ -807,6 +810,20 @@ class PortfolioEngine:
 
         total = len(trades)
 
+        winning_trades = len(winning)
+
+        losing_trades = len(losing)
+
+        win_rate = (
+
+            winning_trades * 100 / total
+
+            if total
+
+            else 0
+
+        )
+
         average_win = (
 
             sum(winning) / len(winning)
@@ -875,6 +892,18 @@ class PortfolioEngine:
         return {
 
             "total_trades": total,
+
+            "winning_trades": winning_trades,
+
+            "losing_trades": losing_trades,
+
+            "win_rate": round(
+
+                win_rate,
+
+                2
+
+            ),
 
             "gross_profit": round(
                 gross_profit,
@@ -3044,5 +3073,265 @@ class PortfolioEngine:
             score,
 
             2
+
+        )
+    
+    def strategy_health(
+
+        self,
+
+        db,
+
+        symbols
+
+    ):
+
+        analytics = self.trade_analytics(
+
+            db,
+
+            symbols
+
+        )
+
+        return self.strategy_intelligence_engine.strategy_health(
+
+            analytics
+
+        )
+    
+    def strategy_confidence(
+
+        self,
+
+        db,
+
+        symbols
+
+    ):
+
+        analytics = self.trade_analytics(
+
+            db,
+
+            symbols
+
+        )
+
+        return self.strategy_intelligence_engine.strategy_confidence(
+
+            analytics
+
+        )
+    
+    def market_regime(
+
+        self,
+
+        db,
+
+        symbol
+
+    ):
+
+        df = self.backtest_engine.strategy.calculate_moving_averages(
+
+            db,
+
+            symbol
+
+        )
+
+        if df.empty:
+
+            return {
+
+                "market_regime": "Unknown"
+
+            }
+
+        latest = df.iloc[-1]
+
+        return self.strategy_intelligence_engine.market_regime(
+
+            latest_close=latest["close"],
+
+            long_ma=latest["MA_LONG"]
+
+        )
+    
+    def strategy_recommendation(
+
+        self,
+
+        db,
+
+        symbol,
+
+        symbols
+
+    ):
+
+        health = self.strategy_health(
+
+            db,
+
+            symbols
+
+        )
+
+        confidence = self.strategy_confidence(
+
+            db,
+
+            symbols
+
+        )
+
+        regime = self.market_regime(
+
+            db,
+
+            symbol
+
+        )
+
+        return self.strategy_intelligence_engine.strategy_recommendation(
+
+            health,
+
+            confidence,
+
+            regime["market_regime"]
+
+        )
+    
+    def risk_recommendation(
+
+        self,
+
+        db,
+
+        symbols
+
+    ):
+
+        health = self.strategy_health(
+
+            db,
+
+            symbols
+
+        )
+
+        confidence = self.strategy_confidence(
+
+            db,
+
+            symbols
+
+        )
+
+        return self.strategy_intelligence_engine.risk_recommendation(
+
+            health,
+
+            confidence
+
+        )
+    
+    def strategy_summary(
+
+        self,
+
+        db,
+
+        symbol,
+
+        symbols
+
+    ):
+
+        health = self.strategy_health(
+
+            db,
+
+            symbols
+
+        )
+
+        confidence = self.strategy_confidence(
+
+            db,
+
+            symbols
+
+        )
+
+        regime = self.market_regime(
+
+            db,
+
+            symbol
+
+        )
+
+        recommendation = self.strategy_intelligence_engine.strategy_recommendation(
+
+            health,
+
+            confidence,
+
+            regime["market_regime"]
+
+        )
+
+        risk = self.strategy_intelligence_engine.risk_recommendation(
+
+            health,
+
+            confidence
+
+        )
+
+        return self.strategy_intelligence_engine.strategy_summary(
+
+            health,
+
+            confidence,
+
+            regime,
+
+            recommendation,
+
+            risk
+
+        )
+    
+    def strategy_intelligence(
+
+        self,
+
+        db,
+
+        symbol,
+
+        symbols
+
+    ):
+
+        summary = self.strategy_summary(
+
+            db,
+
+            symbol,
+
+            symbols
+
+        )
+
+        return self.strategy_intelligence_engine.strategy_intelligence(
+
+            summary
 
         )

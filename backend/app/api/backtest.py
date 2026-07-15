@@ -310,3 +310,134 @@ def monte_carlo(
         simulations
 
     )
+
+@router.get("/portfolio/strategy-health")
+def strategy_health(
+
+    db: Session = Depends(get_db)
+
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.strategy_health(
+
+        db,
+
+        symbols
+
+    )
+
+@router.get("/portfolio/strategy-confidence")
+def strategy_confidence(
+
+    db: Session = Depends(get_db)
+
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.strategy_confidence(
+
+        db,
+
+        symbols
+
+    )
+
+@router.get("/portfolio/market-regime/{symbol}")
+def market_regime(
+
+    symbol: str,
+
+    db: Session = Depends(get_db)
+
+):
+
+    return service.market_regime(
+
+        db,
+
+        symbol
+
+    )
+
+@router.get("/portfolio/strategy-recommendation/{symbol}")
+def strategy_recommendation(
+
+    symbol: str,
+
+    db: Session = Depends(get_db)
+
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.strategy_recommendation(
+
+        db,
+
+        symbol,
+
+        symbols
+
+    )
+
+@router.get("/portfolio/risk-recommendation")
+def risk_recommendation(
+
+    db: Session = Depends(get_db)
+
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.risk_recommendation(
+
+        db,
+
+        symbols
+
+    )
+
+@router.get("/portfolio/strategy-summary/{symbol}")
+def strategy_summary(
+
+    symbol: str,
+
+    db: Session = Depends(get_db)
+
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.strategy_summary(
+
+        db,
+
+        symbol,
+
+        symbols
+
+    )
+
+@router.get("/portfolio/strategy-intelligence/{symbol}")
+def strategy_intelligence(
+
+    symbol: str,
+
+    db: Session = Depends(get_db)
+
+):
+
+    symbols = get_nifty200_symbols()
+
+    return service.strategy_intelligence(
+
+        db,
+
+        symbol,
+
+        symbols
+
+    )

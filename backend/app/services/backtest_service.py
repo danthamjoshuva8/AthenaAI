@@ -293,3 +293,141 @@ class BacktestService:
             simulations
 
         )
+    
+    def strategy_health(
+
+        self,
+
+        db,
+
+        symbols
+
+    ):
+
+        return self.portfolio_engine.strategy_health(
+
+            db,
+
+            symbols
+
+        )
+    
+    def strategy_confidence(
+
+        self,
+
+        db,
+
+        symbols
+
+    ):
+
+        return self.portfolio_engine.strategy_confidence(
+
+            db,
+
+            symbols
+
+        )
+    
+    def market_regime(
+
+        self,
+
+        db,
+
+        symbol
+
+    ):
+
+        return self.portfolio_engine.market_regime(
+
+            db,
+
+            symbol
+
+        )
+    
+    def strategy_recommendation(
+
+        self,
+
+        db,
+
+        symbol,
+
+        symbols
+
+    ):
+
+        return self.portfolio_engine.strategy_recommendation(
+
+            db,
+
+            symbol,
+
+            symbols
+
+        )
+    
+    def risk_recommendation(
+
+        self,
+
+        db,
+
+        symbols
+
+    ):
+
+        return self.portfolio_engine.risk_recommendation(
+
+            db,
+
+            symbols
+
+        )
+    
+    def strategy_summary(
+
+        self,
+
+        db,
+
+        symbol,
+
+        symbols
+
+    ):
+
+        return self.portfolio_engine.strategy_summary(
+
+            db,
+
+            symbol,
+
+            symbols
+
+        )
+    
+    def strategy_intelligence(
+
+        self,
+
+        db,
+
+        symbol,
+
+        symbols
+
+    ):
+
+        return self.portfolio_engine.strategy_intelligence(
+
+            db,
+
+            symbol,
+
+            symbols
+
+        )

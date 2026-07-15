@@ -8,7 +8,7 @@ class BacktestConfig : #
 
     initial_capital : float = 100000
 
-    risk_percent : float = 1.0
+    risk_percent : float = 0.75
 
     #
     # Strategy Parameters
