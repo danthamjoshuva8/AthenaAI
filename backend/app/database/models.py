@@ -21,3 +21,12 @@ class MarketData(Base):
     close = Column(Float)
 
     volume = Column(Float)
+
+class StockMaster(Base):
+    __tablename__ = "stock_master"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(30), unique=True, nullable=False)
+    company_name = Column(String(200))
+    sector = Column(String(100))
+    industry = Column(String(200))

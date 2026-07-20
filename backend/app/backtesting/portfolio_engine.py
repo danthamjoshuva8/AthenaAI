@@ -13,7 +13,8 @@ from datetime import date
 from app.backtesting.walk_forward_optimizer import WalkForwardOptimizer
 from app.backtesting.monte_carlo_engine import MonteCarloEngine
 from app.backtesting.strategy_intelligence import StrategyIntelligence
-
+from collections import defaultdict
+from collections import defaultdict
 
 class PortfolioEngine:
 
@@ -49,6 +50,9 @@ class PortfolioEngine:
 
         portfolio_trades = []
 
+        #
+        # Load trades from all symbols
+        #
         for symbol in symbols:
 
             trades = self.backtest_engine.execute_trades(
@@ -62,14 +66,44 @@ class PortfolioEngine:
 
             portfolio_trades.extend(trades)
 
-        portfolio_trades.sort(
+        #
+        # Group trades by entry date
+        #
+        grouped = defaultdict(list)
 
-            key=lambda trade: trade["entry_date"]
+        for trade in portfolio_trades:
 
-        )
+            grouped[
+                trade["entry_date"]
+            ].append(trade)
 
-        return portfolio_trades
-    
+        ranked_trades = []
+
+        #
+        # Rank every trading day separately
+        #
+        for entry_date in sorted(grouped.keys()):
+
+            today = grouped[entry_date]
+
+            #
+            # Highest score first
+            #
+            today.sort(
+
+                key=lambda x: x.get(
+                    "total_score",
+                    0
+                ),
+
+                reverse=True
+
+            )
+
+            ranked_trades.extend(today)
+
+        return ranked_trades
+
     def build_timeline(
         self,
         trades: list
@@ -173,11 +207,17 @@ class PortfolioEngine:
         db: Session,
         symbols: list
     ):
+        daily_entries = defaultdict(int)
 
         trades = self.load_all_trades(
             db,
             symbols
         )
+
+        #
+        # Rank trades by day
+        #
+        trades = self.rank_daily_trades(trades)
 
         timeline = self.build_timeline(
             trades
@@ -228,6 +268,33 @@ class PortfolioEngine:
                 #
 
                 if symbol in open_positions:
+
+                    continue
+
+                trade_date = event["date"]
+
+                if (
+                    daily_entries[trade_date]
+                    >= self.config.max_daily_entries
+                ):
+
+                    skipped_trades.append(trade)
+
+                    trade_decisions.append(
+
+                        TradeDecision(
+
+                            symbol=symbol,
+
+                            date=trade_date,
+
+                            decision="SKIPPED",
+
+                            reason="DAILY_LIMIT_REACHED"
+
+                        )
+
+                    )
 
                     continue
 
@@ -376,6 +443,7 @@ class PortfolioEngine:
                     )
 
                 executed_trades.append(trade)
+                daily_entries[event["date"]] += 1
 
             elif event["type"] == "SELL_2R":
 
@@ -3335,3 +3403,43 @@ class PortfolioEngine:
             summary
 
         )
+
+    def rank_daily_trades(
+        self,
+        trades: list
+    ):
+
+        grouped = defaultdict(list)
+
+        #
+        # Group by entry date
+        #
+        for trade in trades:
+
+            grouped[
+                trade["entry_date"]
+            ].append(trade)
+
+        ranked = []
+
+        #
+        # Rank each day separately
+        #
+        for entry_date in sorted(grouped.keys()):
+
+            today = grouped[entry_date]
+
+            today.sort(
+
+                key=lambda x: x.get(
+                    "total_score",
+                    0
+                ),
+
+                reverse=True
+
+            )
+
+            ranked.extend(today)
+
+        return ranked

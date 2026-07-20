@@ -232,17 +232,17 @@ class MovingAverageStrategy:
 
             sell_condition = False
 
-            ma15 = row["MA_SHORT"]
+            short_ma = row["MA_SHORT"]
 
-            ma30 = row["MA_MEDIUM"]
+            medium_ma = row["MA_MEDIUM"]
 
-            ma150 = row["MA_LONG"]
+            long_ma = row["MA_LONG"]
 
             distance_from_ma = None
-            near_ma15 = False
+            near_short_ma = False
 
             bullish_candle = False
-            touches_ma15 = False
+            touches_short_ma = False
             support_candle = False
             volume_confirmation = False
             body_percent = None
@@ -255,9 +255,9 @@ class MovingAverageStrategy:
 
             # Not enough data
             if (
-                pd.isna(ma15)
-                or pd.isna(ma30)
-                or pd.isna(ma150)
+                pd.isna(short_ma)
+                or pd.isna(medium_ma)
+                or pd.isna(long_ma)
             ):
 
                 signal = "HOLD"
@@ -266,7 +266,7 @@ class MovingAverageStrategy:
 
                 bullish_trend = (
 
-                    ma15 > ma30 > ma150
+                    short_ma > medium_ma > long_ma
 
                 )
 
@@ -274,15 +274,15 @@ class MovingAverageStrategy:
 
                     abs(
 
-                        row["close"] - ma15
+                        row["close"] - short_ma
 
                     )
 
-                    / ma15
+                    / short_ma
 
                 ) * 100
 
-                near_ma15 = (
+                near_short_ma = (
 
                     distance_from_ma <= pullback_percent
 
@@ -404,13 +404,13 @@ class MovingAverageStrategy:
 
                 )
 
-                touches_ma15 = (
+                touches_short_ma = (
 
-                    row["low"] <= ma15
+                    row["low"] <= short_ma
 
                     and
 
-                    row["close"] > ma15
+                    row["close"] > short_ma
 
                 )
 
@@ -427,7 +427,7 @@ class MovingAverageStrategy:
 
                     and
 
-                    near_ma15
+                    near_short_ma
 
                     and
 
@@ -435,7 +435,7 @@ class MovingAverageStrategy:
 
                     and
 
-                    touches_ma15
+                    touches_short_ma
 
                     and
 
@@ -617,16 +617,16 @@ class MovingAverageStrategy:
                         partial_exit_3r = True
 
                     #
-                    # MA15 EXIT
+                    # SHORT MA EXIT
                     #
 
-                    elif row["close"] < ma15:
+                    elif row["close"] < short_ma:
 
                         signal = "SELL"
 
                         exit_price = row["close"]
 
-                        exit_reason = "MA15_BREAK"
+                        exit_reason = "SHORT_MA_BREAK"
 
                         in_position = False
 
@@ -665,16 +665,27 @@ class MovingAverageStrategy:
                     ),
 
                     "volume_confirmation": volume_confirmation,
-                    "MA15": None if pd.isna(ma15) else float(ma15),
-                    "MA30": None if pd.isna(ma30) else float(ma30),
-                    "MA150": None if pd.isna(ma150) else float(ma150),
+                    "moving_averages": {
+                        "short": {
+                            "period": self.config.strategy.short_ma,
+                            "value": None if pd.isna(short_ma) else float(short_ma)
+                        },
+                        "medium": {
+                            "period": self.config.strategy.medium_ma,
+                            "value": None if pd.isna(medium_ma) else float(medium_ma)
+                        },
+                        "long": {
+                            "period": self.config.strategy.long_ma,
+                            "value": None if pd.isna(long_ma) else float(long_ma)
+                        }
+                    },
                     "distance_from_ma": (
                         None if distance_from_ma is None
                         else round(distance_from_ma, 2)
                     ),
-                    "near_ma15": near_ma15,
+                    "near_short_ma": near_short_ma,
                     "bullish_candle": bullish_candle,
-                    "touches_ma15": touches_ma15,
+                    "touches_short_ma": touches_short_ma,
                     "support_candle": support_candle,
                     "waiting_breakout": waiting_breakout,
                     "breakout_candle_count": breakout_candle_count,

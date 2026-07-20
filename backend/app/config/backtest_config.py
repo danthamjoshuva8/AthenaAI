@@ -64,3 +64,5 @@ class BacktestConfig : #
     start_date = None
 
     end_date = None
+
+    max_daily_entries = 3

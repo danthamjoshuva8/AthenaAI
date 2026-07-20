@@ -75,11 +75,7 @@ class StrategyService:
 
             "signal": latest["signal"],
 
-            "MA15": latest["MA15"],
-
-            "MA30": latest["MA30"],
-
-            "MA150": latest["MA150"]
+            "moving_averages": latest["moving_averages"]
 
         }
 

@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from app.strategies.moving_average import MovingAverageStrategy
 from app.config.backtest_config import BacktestConfig
 from app.strategies.strategy_factory import StrategyFactory
+from collections import defaultdict
+from app.services.trade_selection_service import TradeSelectionService
 
 
 class BacktestEngine:
@@ -17,6 +19,8 @@ class BacktestEngine:
         self.config = config
 
         self.factory = StrategyFactory()
+
+        self.trade_selection = TradeSelectionService()
         
         self.strategy = self.factory.create_strategy(
             self.config.strategy.strategy_name,
@@ -43,12 +47,50 @@ class BacktestEngine:
         end_date=None
     ):
 
-        return self.strategy.generate_signals(
+        signals = self.strategy.generate_signals(
             db,
             symbol,
             start_date,
             end_date
         )
+
+        candidates = self.trade_selection.build_candidates(
+            db=db,
+            symbol=symbol,
+            signals=signals
+        )
+
+        candidates = self.trade_selection.ranking.rank_candidates(
+            candidates
+        )
+
+        #
+        # Convert TradeCandidate back to dictionary so the
+        # existing backtest engine doesn't need to change.
+        #
+
+        buy_map = {
+            c.signal_date: c
+            for c in candidates
+        }
+
+        for signal in signals:
+
+            if signal["signal"] != "BUY":
+                continue
+
+            candidate = buy_map.get(signal["date"])
+
+            if candidate is None:
+                continue
+
+            signal["market_score"] = candidate.market_score
+            signal["sector_score"] = candidate.sector_score
+            signal["quantity"] = candidate.quantity
+            signal["capital_required"] = candidate.capital_required
+            signal["total_score"] = candidate.total_score
+
+        return signals
 
     def _open_position(
         self,
@@ -546,12 +588,66 @@ class BacktestEngine:
         if len(signals) == 0:
             return []
 
-        _, trades = self._process_signals(
-            signals
-        )
+        _, trades = self._process_signals(signals)
+
+        #
+        # Attach ranking metrics to each completed trade
+        #
+        buy_signals = {
+            s["date"]: s
+            for s in signals
+            if s["signal"] == "BUY"
+        }
+
+        for trade in trades:
+
+            signal = buy_signals.get(trade["entry_date"])
+
+            if signal is None:
+                continue
+
+            volume_ratio = (
+                signal["volume"] / signal["volume20"]
+                if signal.get("volume20")
+                else 0
+            )
+
+            distance_from_ma = signal.get(
+                "distance_from_ma",
+                0
+            )
+
+            body_percent = signal.get(
+                "body_percent",
+                0
+            )
+
+            quality_pass = signal.get(
+                "quality_pass",
+                False
+            )
+
+            volume_confirmation = signal.get(
+                "volume_confirmation",
+                False
+            )
+
+            trade["market_score"] = signal.get("market_score", 0)
+            trade["sector_score"] = signal.get("sector_score", 0)
+
+            trade["total_score"] = signal.get("total_score", 0)
+
+            trade["position_size"] = signal.get("position_size", 0)
+            trade["risk_amount"] = signal.get("risk_amount", 0)
+
+            trade["volume_ratio"] = volume_ratio
+            trade["distance_from_ma"] = distance_from_ma
+            trade["body_percent"] = body_percent
+            trade["quality_pass"] = quality_pass
+            trade["volume_confirmation"] = volume_confirmation
 
         return trades
-    
+
     def execute_portfolio(
         self,
         db,
@@ -563,9 +659,8 @@ class BacktestEngine:
         portfolio_trades = []
 
         #
-        # Collect trades
+        # Collect trades from all symbols
         #
-
         for symbol in symbols:
 
             trades = self.execute_trades(
@@ -576,22 +671,25 @@ class BacktestEngine:
             )
 
             for trade in trades:
-
                 trade["symbol"] = symbol
 
             portfolio_trades.extend(trades)
 
         #
-        # Sort by ENTRY DATE
+        # Group by entry date
         #
+        daily_trades = defaultdict(list)
 
-        portfolio_trades.sort(
+        for trade in portfolio_trades:
 
-            key=lambda trade: trade["entry_date"]
+            daily_trades[
+                trade["entry_date"]
+            ].append(trade)
 
-        )
-
-        return portfolio_trades
+        #
+        # Return grouped by day
+        #
+        return daily_trades
     
     def performance_metrics(
         self,

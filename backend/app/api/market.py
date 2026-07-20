@@ -7,6 +7,8 @@ from app.database.session import get_db
 
 from app.services.market_service import MarketService
 from app.schemas.market_data import HistoryLoadRequest
+from datetime import datetime
+from app.models.sector import Sector
 
 router = APIRouter(
     prefix="/market",
@@ -115,4 +117,73 @@ def load_history(
     return service.load_history(
         db,
         request.years
+    )
+
+@router.post(
+    "/history/nifty50"
+)
+def load_nifty50_history(
+    years: int = 7,
+    db: Session = Depends(get_db)
+):
+
+    service = MarketService()
+
+    return service.load_nifty_index_history(
+        db,
+        years
+    )
+
+@router.get("/history/nifty50/test")
+def test_nifty(
+    date: str,
+    db: Session = Depends(get_db)
+):
+
+    service = MarketService()
+
+    df = service.get_nifty_history(
+        db,
+        datetime.strptime(
+            date,
+            "%Y-%m-%d"
+        ).date()
+    )
+
+    df = service.prepare_nifty_context(df)
+
+    return {
+
+        "rows": len(df),
+
+        "last_date": str(df.iloc[-1]["Date"]),
+
+        "last_close": float(df.iloc[-1]["Close"]),
+
+        "last_ma150": float(df.iloc[-1]["MA150"])
+
+    }
+
+@router.post("/history/sector/{sector}")
+def load_sector_history(
+    sector: Sector,
+    years: int = 7,
+    db: Session = Depends(get_db)
+):
+
+    result = MarketService().load_sector_history(
+        db=db,
+        sector=sector,
+        years=years
+    )
+
+    return result
+
+@router.post("/stock-master")
+def load_stock_master(
+    db: Session = Depends(get_db)
+):
+
+    return MarketService().load_stock_master(
+        db=db
     )

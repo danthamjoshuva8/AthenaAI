@@ -1,0 +1,22 @@
+from enum import Enum
+
+
+class Sector(str, Enum):
+
+    AUTO = "AUTO"
+    BANKING = "BANKING"
+    FINANCIAL = "FINANCIAL"
+    FMCG = "FMCG"
+    HEALTHCARE = "HEALTHCARE"
+    IT = "IT"
+    METAL = "METAL"
+    OIL_GAS = "OIL_GAS"
+    PHARMA = "PHARMA"
+    POWER = "POWER"
+    REALTY = "REALTY"
+    TELECOM = "TELECOM"
+    MEDIA = "MEDIA"
+    CAPITAL_GOODS = "CAPITAL_GOODS"
+    CHEMICAL = "CHEMICAL"
+    TEXTILE = "TEXTILE"
+    UNKNOWN = "UNKNOWN"
