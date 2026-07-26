@@ -71,13 +71,13 @@ class BacktestService:
             symbols
         )
     
-    def execute_portfolio(
+    async def execute_portfolio(
         self,
         db: Session,
         symbols: list
     ):
 
-        return self.portfolio_engine.execute_portfolio(
+        return await self.portfolio_engine.execute_portfolio(
 
             db,
 
@@ -107,13 +107,13 @@ class BacktestService:
             symbol
         )
     
-    def portfolio_summary(
+    async def portfolio_summary(
         self,
         db: Session,
         symbols: list
     ):
 
-        return self.portfolio_engine.portfolio_summary(
+        return await self.portfolio_engine.portfolio_summary(
             db,
             symbols
         )

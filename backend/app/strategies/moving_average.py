@@ -167,6 +167,21 @@ class MovingAverageStrategy:
             .mean()
         )
 
+        # # True Range
+        # df["TR"] = pd.concat([
+        #     df["high"] - df["low"],
+        #     (df["high"] - df["close"].shift()).abs(),
+        #     (df["low"] - df["close"].shift()).abs()
+        # ], axis=1).max(axis=1)
+
+        # # 14-day ATR
+        # df["ATR"] = df["TR"].rolling(14).mean()
+
+        # # ATR as % of Close
+        # df["ATR_PERCENT"] = (
+        #     (df["ATR"] / df["close"]) * 100
+        # )
+
         return df
     
     def generate_signals(
@@ -253,6 +268,23 @@ class MovingAverageStrategy:
 
             quality_pass = False
 
+            # ma15_slope = None
+            # ma30_slope = None
+            # ma150_slope = None
+
+            # distance_from_15ma = None
+            # distance_from_30ma = None
+            # distance_from_150ma = None
+
+            # trend_alignment = False
+
+            # ma15_30_gap = None
+            # ma30_150_gap = None
+
+            # # NEW
+            # atr = None
+            # atr_percent = None
+
             # Not enough data
             if (
                 pd.isna(short_ma)
@@ -269,6 +301,91 @@ class MovingAverageStrategy:
                     short_ma > medium_ma > long_ma
 
                 )
+
+                # #
+                # # Trend Metrics
+                # #
+
+                # trend_alignment = bullish_trend
+
+                # distance_from_15ma = round(
+                #     ((row["close"] - short_ma) / short_ma) * 100,
+                #     2
+                # )
+
+                # distance_from_30ma = round(
+                #     ((row["close"] - medium_ma) / medium_ma) * 100,
+                #     2
+                # )
+
+                # distance_from_150ma = round(
+                #     ((row["close"] - long_ma) / long_ma) * 100,
+                #     2
+                # )
+
+                # ma15_30_gap = round(
+                #     ((short_ma - medium_ma) / medium_ma) * 100,
+                #     2
+                # )
+
+                # ma30_150_gap = round(
+                #     ((medium_ma - long_ma) / long_ma) * 100,
+                #     2
+                # )
+
+                # #
+                # # MA Slopes
+                # #
+
+                # previous = df.iloc[max(0, index - 5)]
+
+                # if index >= 5:
+
+                #     ma15_slope = round(
+                #         (short_ma - previous["MA_SHORT"]) / 5,
+                #         4
+                #     )
+
+                #     ma30_slope = round(
+                #         (medium_ma - previous["MA_MEDIUM"]) / 5,
+                #         4
+                #     )
+
+                #     ma150_slope = round(
+                #         (long_ma - previous["MA_LONG"]) / 5,
+                #         4
+                #     )
+
+                # # ATR (14-day)
+
+                # if index >= 14:
+
+                #     tr_values = []
+
+                #     for i in range(index - 13, index + 1):
+
+                #         current = df.iloc[i]
+
+                #         previous_close = (
+                #             df.iloc[i - 1]["close"]
+                #             if i > 0
+                #             else current["close"]
+                #         )
+
+                #         tr = max(
+                #             current["high"] - current["low"],
+                #             abs(current["high"] - previous_close),
+                #             abs(current["low"] - previous_close)
+                #         )
+
+                #         tr_values.append(tr)
+
+                #     atr = round(sum(tr_values) / 14, 2)
+
+                #     atr_percent = round(
+                #         (atr / row["close"]) * 100,
+                #         2
+                #     )
 
                 distance_from_ma = (
 
@@ -307,6 +424,15 @@ class MovingAverageStrategy:
                     / row["open"]
 
                 ) * 100
+
+                # atr = None
+                # atr_percent = None
+
+                # if not pd.isna(row["ATR"]):
+                #     atr = round(float(row["ATR"]), 2)
+
+                # if not pd.isna(row["ATR_PERCENT"]):
+                #     atr_percent = round(float(row["ATR_PERCENT"]), 2)
 
                 upper_wick = (
 
@@ -749,6 +875,20 @@ class MovingAverageStrategy:
                     ),
 
                     "quality_pass": quality_pass,
+                    # "trend_alignment": trend_alignment,
+
+                    # "ma15_slope": ma15_slope,
+                    # "ma30_slope": ma30_slope,
+                    # "ma150_slope": ma150_slope,
+
+                    # "distance_from_15ma": distance_from_15ma,
+                    # "distance_from_30ma": distance_from_30ma,
+                    # "distance_from_150ma": distance_from_150ma,
+
+                    # "ma15_30_gap": ma15_30_gap,
+                    # "ma30_150_gap": ma30_150_gap,
+                    # "atr": atr,
+                    # "atr_percent": atr_percent,
                     "target_2r": (
                         None
                         if target_2r is None

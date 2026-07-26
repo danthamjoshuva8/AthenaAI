@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from app.models.sector import Sector
+from typing import Any, Dict, List
 
 @dataclass
 class TradeCandidate:
@@ -44,3 +45,11 @@ class TradeCandidate:
     sector: Sector = Sector.UNKNOWN
 
     risk_amount: float = 0
+
+    ai_confidence: float = 0.0
+
+    ai_decision: str = "WATCH"
+
+    ai_explanations: List[str] = field(default_factory=list)
+
+    ai_results: Dict[str, Any] = field(default_factory=dict)

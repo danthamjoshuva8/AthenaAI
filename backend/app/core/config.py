@@ -3,7 +3,12 @@ import os
 
 load_dotenv()
 
+
 class Settings:
+
+    # ==========================================
+    # Database
+    # ==========================================
 
     POSTGRES_USER = os.getenv("POSTGRES_USER")
 
@@ -16,6 +21,16 @@ class Settings:
     POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 
     DATABASE_URL = os.getenv("DATABASE_URL")
+
+    # ==========================================
+    # AI
+    # ==========================================
+
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "deepseek")
+
+    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+
+    DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
 
 settings = Settings()

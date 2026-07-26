@@ -15,6 +15,18 @@ from app.backtesting.monte_carlo_engine import MonteCarloEngine
 from app.backtesting.strategy_intelligence import StrategyIntelligence
 from collections import defaultdict
 from collections import defaultdict
+from app.ai.services.ai_trade_service import AITradeService
+import json
+from pathlib import Path
+import math
+from app.utils.json_exporter import JsonExporter
+
+MIN_TRADE_SCORE = 60
+
+cache_file = Path("cache/all_trades.json")
+
+# Create cache directory if it doesn't exist
+cache_file.parent.mkdir(parents=True, exist_ok=True)
 
 class PortfolioEngine:
 
@@ -42,6 +54,9 @@ class PortfolioEngine:
 
         self.strategy_intelligence_engine = StrategyIntelligence()
 
+        self.ai_service = AITradeService()
+        self.JsonExporter = JsonExporter()
+
     def load_all_trades(
         self,
         db: Session,
@@ -53,7 +68,10 @@ class PortfolioEngine:
         #
         # Load trades from all symbols
         #
-        for symbol in symbols:
+        for index, symbol in enumerate(symbols):
+            print(f"Processing {index + 1}/{len(symbols)}: {symbol}")
+
+            # Your existing code
 
             trades = self.backtest_engine.execute_trades(
                 db,
@@ -202,12 +220,79 @@ class PortfolioEngine:
 
         return timeline
     
-    def execute_portfolio(
+    def find_bad(self, obj, path="root"):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                self.find_bad(v, f"{path}.{k}")
+
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                self.find_bad(v, f"{path}[{i}]")
+
+        elif isinstance(obj, float):
+            if math.isnan(obj):
+                print("NaN:", path)
+
+            elif math.isinf(obj):
+                print("Infinity:", path)
+
+    def clean(self, obj):
+        if isinstance(obj, dict):
+            return {k: self.clean(v) for k, v in obj.items()}
+
+        if isinstance(obj, list):
+            return [self.clean(v) for v in obj]
+
+        if isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return None
+
+        return obj
+
+    async def execute_portfolio(
         self,
         db: Session,
         symbols: list
     ):
         daily_entries = defaultdict(int)
+
+        # if cache_file.exists():
+        #     print("Loading trades from cache...")
+
+        #     with open(cache_file, "r", encoding="utf-8") as f:
+        #         trades = json.load(f)
+
+        #         # Convert date strings back to date objects
+        #         date_fields = [
+        #             "entry_date",
+        #             "exit_date",
+        #             "target_2r_date",
+        #             "target_3r_date",
+        #             "stop_loss_date"
+        #         ]
+        
+        #         for trade in trades:
+        #             for field in date_fields:
+        #                 if trade.get(field):
+        #                     trade[field] = date.fromisoformat(trade[field])
+
+        # else:
+        #     print("Generating trades...")
+
+        #     trades = self.load_all_trades(
+        #         db,
+        #         symbols
+        #     )
+
+        #     cache_file.parent.mkdir(parents=True, exist_ok=True)
+
+        #     with open(cache_file, "w", encoding="utf-8") as f:
+        #         json.dump(
+        #             trades,
+        #             f,
+        #             indent=4,
+        #             default=str
+        #         )
 
         trades = self.load_all_trades(
             db,
@@ -264,11 +349,78 @@ class PortfolioEngine:
             if event["type"] == "BUY":
 
                 #
+                # Minimum Trade Quality Score
+                #
+
+                trade_score = trade.get("total_score", 0)
+
+                if trade_score < MIN_TRADE_SCORE:
+
+                    skipped_trades.append(trade)
+
+                    trade_decisions.append(
+
+                        TradeDecision(
+
+                            symbol=symbol,
+
+                            date=event["date"],
+
+                            decision="SKIPPED",
+
+                            reason="LOW_TRADE_SCORE"
+
+                        )
+
+                    )
+
+                    continue
+
+                print("trade ", trade)
+
+                # #
+                # # AI Evaluation
+                # #
+
+                # ai_result = await self.ai_service.evaluate_trade(trade)
+
+                # trade["ai"] = ai_result.model_dump()
+                # trade["ai_decision"] = ai_result.decision
+                # trade["ai_confidence"] = ai_result.confidence
+
+                # #
+                # # AI Decision Filter
+                # #
+                # # Execute only:
+                # #   1. BUY
+                # #   2. HOLD with confidence >= 65
+                # #
+
+                # if not (
+                #     ai_result.decision == "BUY"
+                #     or (
+                #         ai_result.decision == "HOLD"
+                #         and ai_result.confidence >= 65
+                #     )
+                # ):
+                #     skipped_trades.append(trade)
+
+                #     trade_decisions.append(
+                #         TradeDecision(
+                #             symbol=symbol,
+                #             date=event["date"],
+                #             decision="SKIPPED",
+                #             reason=f"AI_{ai_result.decision}_{ai_result.confidence}"
+                #         )
+                #     )
+
+                #     continue
+
+                #
                 # Already holding this stock
                 #
 
                 if symbol in open_positions:
-
                     continue
 
                 trade_date = event["date"]
@@ -570,8 +722,7 @@ class PortfolioEngine:
                 }
 
             )
-
-        return {
+        result = {
 
             "timeline": portfolio_events,
 
@@ -588,14 +739,25 @@ class PortfolioEngine:
             ]
 
         }
+
+        self.find_bad(result)
+
+        cleaned_result = self.clean(result)
+
+        self.JsonExporter.save(
+            cleaned_result,
+            "portfolio_timeline1.json"
+        )
+
+        return cleaned_result
     
-    def portfolio_summary(
+    async def portfolio_summary(
         self,
         db: Session,
         symbols: list
     ):
 
-        portfolio = self.execute_portfolio(
+        portfolio = await self.execute_portfolio(
             db,
             symbols
         )
@@ -638,7 +800,7 @@ class PortfolioEngine:
                 profit
             )
 
-        return {
+        result = {
 
             "total_trades": total_trades,
 
@@ -677,6 +839,13 @@ class PortfolioEngine:
                 2
             )
         }
+
+        self.JsonExporter.save(
+                    result,
+                    "portfolio_summary.json"
+                )
+
+        return result
     
     def portfolio_statistics(
         self,

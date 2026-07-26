@@ -1,5 +1,26 @@
 from dataclasses import dataclass, field
 from app.models.strategy_parameters import StrategyParameters
+from enum import Enum
+
+
+class ExitStrategyType(str, Enum):
+
+    PARTIAL_2R_3R = "partial_2r_3r"
+
+    FULL_3R = "full_3r"
+
+    TRAIL_2R = "trail_2r"
+
+
+class StopMoveType(str, Enum):
+
+    NONE = "none"
+
+    BREAKEVEN = "breakeven"
+
+    ONE_R = "1r"
+
+    TWO_R = "2r"
 
 @dataclass
 class BacktestConfig : #
@@ -8,7 +29,7 @@ class BacktestConfig : #
 
     initial_capital : float = 100000
 
-    risk_percent : float = 0.75
+    risk_percent : float = 1.0
 
     #
     # Strategy Parameters
@@ -65,4 +86,12 @@ class BacktestConfig : #
 
     end_date = None
 
-    max_daily_entries = 3
+    max_daily_entries = 5
+
+    #################################################
+    # Exit Strategy
+    #################################################
+
+    EXIT_STRATEGY = ExitStrategyType.PARTIAL_2R_3R
+
+    STOP_MOVE = StopMoveType.TWO_R

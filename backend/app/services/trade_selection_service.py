@@ -29,6 +29,8 @@ from app.services.sector_strength_service import (
 from app.database.models import StockMaster
 from app.models.sector import Sector
 
+from app.services.news_service import NewsService
+
 class TradeSelectionService:
 
     """
@@ -48,6 +50,8 @@ class TradeSelectionService:
         self.market_service = MarketService()
 
         self.sector_strength = SectorStrengthService()
+
+        self.news_service = NewsService()
 
     def build_candidates(
         self,
@@ -74,6 +78,13 @@ class TradeSelectionService:
 
             if risk <= 0:
                 continue
+
+            news = self.news_service.get_historical_news(
+
+                symbol,
+
+                signal["date"]
+            )
 
             candidate = TradeCandidate(
 
@@ -121,6 +132,8 @@ class TradeSelectionService:
 
             )
 
+            signal["historical_news"] = news
+
             try:
 
                 nifty_df = self.market_service.get_nifty_history(
@@ -138,8 +151,35 @@ class TradeSelectionService:
                         nifty_df
                     )
 
-                    candidate.market_score = (
-                        market_state.total_score
+                    candidate.market_score = market_state.total_score
+
+                    # Store market context inside the signal
+                    signal["market_trend"] = market_state.trend
+                    signal["market_score"] = market_state.total_score
+
+                    # Add these only if they exist in MarketState
+                    signal["market_ma_distance"] = getattr(
+                        market_state,
+                        "ma_distance_percent",
+                        None
+                    )
+
+                    signal["market_ma_slope"] = getattr(
+                        market_state,
+                        "ma_slope_percent",
+                        None
+                    )
+
+                    signal["market_momentum"] = getattr(
+                        market_state,
+                        "momentum_percent",
+                        None
+                    )
+
+                    signal["market_atr_percent"] = getattr(
+                        market_state,
+                        "atr_percent",
+                        None
                     )
 
                     stock = (
@@ -147,6 +187,9 @@ class TradeSelectionService:
                         .filter(StockMaster.symbol == symbol)
                         .first()
                     )
+
+                    signal["industry"] = getattr(stock, "industry", None)
+                    signal["market_cap"] = getattr(stock, "market_cap", None)
 
                     print("=" * 80)
                     print("Strategy Symbol :", symbol)
@@ -163,6 +206,12 @@ class TradeSelectionService:
                         else Sector.UNKNOWN
                     )
 
+                    signal["sector"] = (
+                        candidate.sector.value
+                        if candidate.sector
+                        else "UNKNOWN"
+                    )
+
                     candidate.sector_score = (
                         self.sector_strength.get_sector_score(
                             db=db,
@@ -170,6 +219,8 @@ class TradeSelectionService:
                             signal_date=candidate.signal_date
                         )
                     )
+
+                    signal["sector_score"] = candidate.sector_score
 
                     print(
                         candidate.symbol,

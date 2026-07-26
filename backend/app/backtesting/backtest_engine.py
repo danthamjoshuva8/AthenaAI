@@ -7,6 +7,8 @@ from app.config.backtest_config import BacktestConfig
 from app.strategies.strategy_factory import StrategyFactory
 from collections import defaultdict
 from app.services.trade_selection_service import TradeSelectionService
+from app.backtesting.exits.strategy_factory import ExitStrategyFactory
+from app.config.backtest_config import ExitStrategyType
 
 
 class BacktestEngine:
@@ -27,9 +29,13 @@ class BacktestEngine:
             self.config
         )
 
+        self.exit_strategy = ExitStrategyFactory.create(
+            self.config.EXIT_STRATEGY
+        )
+
         self.initial_capital = self.config.initial_capital
 
-        self.risk_percent = 1
+        self.risk_percent = 1.0
 
         self.risk_amount = (
 
@@ -494,21 +500,23 @@ class BacktestEngine:
 
                 position["realized_profit"] += remaining_profit
 
-                position["remaining_quantity"] = 0
+                sell_quantity = position["remaining_quantity"]
+
+                remaining_profit = (
+                    row["exit_price"] - position["entry_price"]
+                ) * sell_quantity
+
+                position["realized_profit"] += remaining_profit
 
                 position["events"].append({
-
                     "type": "SELL",
-
                     "date": row["date"],
-
                     "price": row["exit_price"],
-
-                    "quantity": position["remaining_quantity"],
-
+                    "quantity": sell_quantity,
                     "profit": round(remaining_profit, 2)
-
                 })
+
+                position["remaining_quantity"] = 0
 
                 trades.append(
 
@@ -645,6 +653,19 @@ class BacktestEngine:
             trade["body_percent"] = body_percent
             trade["quality_pass"] = quality_pass
             trade["volume_confirmation"] = volume_confirmation
+            trade["atr"] = signal.get("atr")
+            trade["atr_percent"] = signal.get("atr_percent")
+
+            trade["ma15_slope"] = signal.get("ma15_slope")
+            trade["ma30_slope"] = signal.get("ma30_slope")
+            trade["ma150_slope"] = signal.get("ma150_slope")
+
+            trade["distance_from_15ma"] = signal.get("distance_from_15ma")
+            trade["distance_from_30ma"] = signal.get("distance_from_30ma")
+            trade["distance_from_150ma"] = signal.get("distance_from_150ma")
+
+            trade["ma15_30_gap"] = signal.get("ma15_30_gap")
+            trade["ma30_150_gap"] = signal.get("ma30_150_gap") 
 
         return trades
 
