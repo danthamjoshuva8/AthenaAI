@@ -11,6 +11,10 @@ class ExitStrategyType(str, Enum):
 
     TRAIL_2R = "trail_2r"
 
+    TRAIL_2R_CLOSE = "trail_2r_close"
+
+    TARGET_2R = "TARGET_2R"
+
 
 class StopMoveType(str, Enum):
 
@@ -27,7 +31,7 @@ class BacktestConfig : #
     # Capital
     #
 
-    initial_capital : float = 100000
+    initial_capital : float = 10000000
 
     risk_percent : float = 1.0
 
@@ -92,6 +96,5 @@ class BacktestConfig : #
     # Exit Strategy
     #################################################
 
-    EXIT_STRATEGY = ExitStrategyType.PARTIAL_2R_3R
-
-    STOP_MOVE = StopMoveType.TWO_R
+    exit_strategy: ExitStrategyType = ExitStrategyType.TARGET_2R
+    stop_move: StopMoveType = StopMoveType.TWO_R

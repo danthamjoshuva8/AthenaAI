@@ -6,6 +6,7 @@ from app.database.models import MarketData
 from app.utils.price_buffer import apply_entry_stop_buffer
 from app.config.strategy_config import StrategyConfig
 from app.config.backtest_config import BacktestConfig
+from app.config.backtest_config import ExitStrategyType
 
 config = StrategyConfig()
 
@@ -183,6 +184,34 @@ class MovingAverageStrategy:
         # )
 
         return df
+
+    def reset_trade_state(self):
+
+        return {
+
+            "in_position": False,
+
+            "current_entry_price": None,
+
+            "current_stop_loss": None,
+
+            "target_2r": None,
+
+            "target_3r": None,
+
+            "partial_exit_2r": False,
+
+            "partial_exit_3r": False,
+
+            "waiting_breakout": False,
+
+            "support_high": None,
+
+            "support_low": None,
+
+            "breakout_candle_count": 0
+
+        }
     
     def generate_signals(
         self,
@@ -204,29 +233,34 @@ class MovingAverageStrategy:
 
         signals = []
 
+        strategy = self.config.exit_strategy
+
         # Position status
         in_position = False
 
-        # Breakout waiting variables
-        waiting_breakout = False
+        state = self.reset_trade_state()
 
-        support_high = None
+        in_position = state["in_position"]
 
-        support_low = None
+        current_entry_price = state["current_entry_price"]
 
-        current_stop_loss = None
+        current_stop_loss = state["current_stop_loss"]
 
-        current_entry_price = None
+        target_2r = state["target_2r"]
 
-        target_2r = None
+        target_3r = state["target_3r"]
 
-        target_3r = None
+        partial_exit_2r = state["partial_exit_2r"]
 
-        partial_exit_2r = False
+        partial_exit_3r = state["partial_exit_3r"]
 
-        partial_exit_3r = False
+        waiting_breakout = state["waiting_breakout"]
 
-        breakout_candle_count = 0
+        support_high = state["support_high"]
+
+        support_low = state["support_low"]
+
+        breakout_candle_count = state["breakout_candle_count"]
         
         entry_buffer_enabled = False
         stoploss_buffer_enabled = False
@@ -694,59 +728,11 @@ class MovingAverageStrategy:
                 elif in_position:
 
                     #
-                    # FIRST PARTIAL EXIT (2R)
+                    # Only generate MA SELL.
+                    # All target/trailing logic is handled by BacktestEngine.
                     #
 
-                    if (
-
-                        not partial_exit_2r
-
-                        and
-
-                        row["high"] >= target_2r
-
-                    ):
-
-                        signal = "PARTIAL_EXIT"
-
-                        exit_price = target_2r
-
-                        exit_reason = "TARGET_2R"
-
-                        partial_exit_2r = True
-
-
-                    #
-                    # SECOND PARTIAL EXIT (3R)
-                    #
-
-                    elif (
-
-                        partial_exit_2r
-
-                        and
-
-                        not partial_exit_3r
-
-                        and
-
-                        row["high"] >= target_3r
-
-                    ):
-
-                        signal = "PARTIAL_EXIT"
-
-                        exit_price = target_3r
-
-                        exit_reason = "TARGET_3R"
-
-                        partial_exit_3r = True
-
-                    #
-                    # SHORT MA EXIT
-                    #
-
-                    elif row["close"] < short_ma:
+                    if row["close"] < short_ma:
 
                         signal = "SELL"
 
@@ -756,21 +742,19 @@ class MovingAverageStrategy:
 
                         in_position = False
 
-                        current_stop_loss = None
+                        state = self.reset_trade_state()
 
-                        current_entry_price = None
-
-                        target_2r = None
-
-                        target_3r = None
-
-                        partial_exit_2r = False
-
-                        partial_exit_3r = False
-
-                    else:
-
-                        signal = "HOLD"
+                        in_position = state["in_position"]
+                        current_entry_price = state["current_entry_price"]
+                        current_stop_loss = state["current_stop_loss"]
+                        target_2r = state["target_2r"]
+                        target_3r = state["target_3r"]
+                        partial_exit_2r = state["partial_exit_2r"]
+                        partial_exit_3r = state["partial_exit_3r"]
+                        waiting_breakout = state["waiting_breakout"]
+                        support_high = state["support_high"]
+                        support_low = state["support_low"]
+                        breakout_candle_count = state["breakout_candle_count"]
 
             signals.append(
                 {

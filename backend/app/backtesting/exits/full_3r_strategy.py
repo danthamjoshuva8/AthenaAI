@@ -3,52 +3,24 @@ from app.backtesting.exits.exit_strategy import ExitStrategy
 
 class Full3RStrategy(ExitStrategy):
 
-    def process(
-        self,
-        position,
-        row
-    ):
+    def process(self, position, row):
 
-        #
-        # Ignore every partial exit
-        #
+        if row["high"] >= position["target_3r"]:
 
-        if row["signal"] == "PARTIAL_EXIT":
-
-            if row["exit_reason"] == "TARGET_3R":
-
-                return {
-
-                    "close_position": True,
-
-                    "sell_quantity":
-                        position["remaining_quantity"],
-
-                    "exit_price":
-                        row["exit_price"],
-
-                    "exit_reason":
-                        "TARGET_3R"
-
-                }
-
-            return None
+            return {
+                "close_position": True,
+                "sell_quantity": position["remaining_quantity"],
+                "exit_price": position["target_3r"],
+                "exit_reason": "TARGET_3R"
+            }
 
         if row["signal"] == "SELL":
 
             return {
-
                 "close_position": True,
-
-                "sell_quantity":
-                    position["remaining_quantity"],
-
-                "exit_price":
-                    row["exit_price"],
-
-                "exit_reason":
-                    row["exit_reason"]
-
+                "sell_quantity": position["remaining_quantity"],
+                "exit_price": row["close"],
+                "exit_reason": "SHORT_MA_BREAK"
             }
 
         return None

@@ -105,13 +105,13 @@ def portfolio_metrics(
     )
 
 @router.get("/portfolio/timeline")
-async def portfolio_timeline(
+def portfolio_timeline(
     db: Session = Depends(get_db)
 ):
 
     symbols = get_nifty200_symbols()
 
-    return await service.execute_portfolio(
+    return service.execute_portfolio(
 
         db,
 
@@ -120,13 +120,13 @@ async def portfolio_timeline(
     )
 
 @router.get("/portfolio/summary")
-async def portfolio_summary(
+def portfolio_summary(
     db: Session = Depends(get_db)
 ):
 
     symbols = get_nifty200_symbols()
 
-    return await service.portfolio_summary(
+    return service.portfolio_summary(
         db,
         symbols
     )

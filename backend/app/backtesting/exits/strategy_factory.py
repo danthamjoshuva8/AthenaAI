@@ -6,6 +6,10 @@ from .full_3r_strategy import Full3RStrategy
 
 from .trail_2r_strategy import Trail2RStrategy
 
+from .trail_2r_close_strategy import Trail2RCloseStrategy
+
+from .target_2r_strategy import Target2RStrategy
+
 
 class ExitStrategyFactory:
 
@@ -20,5 +24,11 @@ class ExitStrategyFactory:
 
         if strategy == ExitStrategyType.TRAIL_2R:
             return Trail2RStrategy()
+
+        if strategy == ExitStrategyType.TRAIL_2R_CLOSE:
+            return Trail2RCloseStrategy()
+
+        if strategy == ExitStrategyType.TARGET_2R:
+            return Target2RStrategy()
 
         raise ValueError("Unknown Exit Strategy")

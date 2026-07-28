@@ -30,7 +30,7 @@ class BacktestEngine:
         )
 
         self.exit_strategy = ExitStrategyFactory.create(
-            self.config.EXIT_STRATEGY
+            self.config.exit_strategy
         )
 
         self.initial_capital = self.config.initial_capital
@@ -111,6 +111,9 @@ class BacktestEngine:
 
         )
 
+        if risk_per_share <= 0:
+            return None
+
         target_2r = (
             row["entry_price"]
             + (2 * risk_per_share)
@@ -121,6 +124,11 @@ class BacktestEngine:
             + (3 * risk_per_share)
         )
 
+        print("=" * 50)
+        print("ENTRY :", row["entry_price"])
+        print("STOP  :", row["stop_loss"])
+        print("RISK  :", risk_per_share)
+
         quantity = (
 
             self.risk_amount
@@ -128,6 +136,15 @@ class BacktestEngine:
             / risk_per_share
 
         )
+
+        quantity = int(quantity)
+
+        if quantity < 1:
+            print(
+                f"Skipping trade: risk/share ({risk_per_share:.2f}) "
+                f"is greater than risk amount ({self.risk_amount:.2f})"
+            )
+            return None
 
         capital_used = (
 
@@ -153,7 +170,8 @@ class BacktestEngine:
 
             ),
 
-            "quantity": int(quantity),
+            "quantity": quantity,
+            "remaining_quantity": quantity,
 
             "capital_used": round(
 
@@ -165,7 +183,6 @@ class BacktestEngine:
 
             "target_2r": round(target_2r, 2),
             "target_3r": round(target_3r, 2),
-            "remaining_quantity": int(quantity),
 
             "partial_exit_2r": False,
 
@@ -173,7 +190,9 @@ class BacktestEngine:
 
             "realized_profit": 0.0,
 
-            "events": []
+            "events": [],
+
+            "trail_active": False
 
         }
 
@@ -295,13 +314,47 @@ class BacktestEngine:
         exit_reason: str
     ):
 
-        profit_points = exit_price - position["entry_price"]
+        if position["quantity"] == 0:
+            raise ValueError("Position quantity is zero.")
+
+        average_exit_price = (
+
+            position["entry_price"]
+
+            +
+
+            (
+
+                position["realized_profit"]
+
+                /
+
+                position["quantity"]
+
+            )
+
+        )
+
+        profit_points = (
+
+            average_exit_price
+
+            -
+
+            position["entry_price"]
+
+        )
 
         profit = position["realized_profit"]
 
         profit_percent = (
-            profit_points
-            / position["entry_price"]
+
+            position["realized_profit"]
+
+            /
+
+            position["capital_used"]
+
         ) * 100
 
         holding_days = (
@@ -321,7 +374,7 @@ class BacktestEngine:
             ),
 
             "exit_price": round(
-                exit_price,
+                average_exit_price,
                 2
             ),
 
@@ -400,9 +453,20 @@ class BacktestEngine:
 
                 if row["signal"] == "BUY":
 
-                    position = self._open_position(
-                        row
-                    )
+                    position = self._open_position(row)
+
+                    if position is None:
+
+                        positions.append(
+                            self._build_position_row(
+                                row,
+                                "HOLD",
+                                None,
+                                False
+                            )
+                        )
+
+                        continue
 
                     position["events"].append({
 
@@ -430,90 +494,36 @@ class BacktestEngine:
                 )
 
                 continue
-            if row["signal"] == "PARTIAL_EXIT":
+            print(row)
 
-                action = "PARTIAL_EXIT"
+            #
+            # Generic Stop Loss
+            #
 
-                if not position["partial_exit_2r"]:
+            if row["low"] <= position["stop_loss"]:
 
-                    sell_quantity = position["remaining_quantity"] // 2
+                final_profit = (
 
-                    position["partial_exit_2r"] = True
-
-                elif not position["partial_exit_3r"]:
-
-                    sell_quantity = position["remaining_quantity"] // 2
-
-                    position["partial_exit_3r"] = True
-
-                else:
-
-                    sell_quantity = 0
-
-                partial_profit = (
-
-                    row["exit_price"]
-
-                    - position["entry_price"]
-
-                ) * sell_quantity
-
-                position["remaining_quantity"] -= sell_quantity
-
-                position["realized_profit"] += partial_profit
-
-                position["events"].append({
-
-                    "type": row["exit_reason"],
-
-                    "date": row["date"],
-
-                    "price": row["exit_price"],
-
-                    "quantity": sell_quantity,
-
-                    "profit": round(partial_profit, 2)
-
-                })
-
-                row_position = position
-
-            elif row["signal"] == "SELL":
-
-                action = "SELL"
-
-                exit_reason = row["exit_reason"]
-
-                exit_price = row["exit_price"]
-
-                #
-                # Sell remaining quantity
-                #
-
-                remaining_profit = (
-
-                    row["exit_price"]
+                    position["stop_loss"]
 
                     - position["entry_price"]
 
                 ) * position["remaining_quantity"]
 
-                position["realized_profit"] += remaining_profit
-
-                sell_quantity = position["remaining_quantity"]
-
-                remaining_profit = (
-                    row["exit_price"] - position["entry_price"]
-                ) * sell_quantity
-
-                position["realized_profit"] += remaining_profit
+                position["realized_profit"] += final_profit
 
                 position["events"].append({
-                    "type": "SELL",
+
+                    "type": "STOP_LOSS",
+
                     "date": row["date"],
-                    "price": row["exit_price"],
-                    "quantity": sell_quantity,
-                    "profit": round(remaining_profit, 2)
+
+                    "price": position["stop_loss"],
+
+                    "quantity": position["remaining_quantity"],
+
+                    "profit": round(final_profit, 2)
+
                 })
 
                 position["remaining_quantity"] = 0
@@ -526,17 +536,141 @@ class BacktestEngine:
 
                         row,
 
-                        exit_price,
+                        position["stop_loss"],
 
-                        exit_reason
+                        "STOP_LOSS"
 
                     )
 
                 )
 
-                row_position = position
-
                 position = None
+
+                positions.append(
+
+                    self._build_position_row(
+
+                        row,
+
+                        "SELL",
+
+                        None,
+
+                        False,
+
+                        "STOP_LOSS",
+
+                        row["stop_loss"]
+
+                    )
+
+                )
+
+                continue
+            result = self.exit_strategy.process(position, row)
+
+            print("=" * 60)
+            print("AFTER EXIT STRATEGY")
+            print("Signal:", row["signal"])
+            print("Result:", result)
+
+            if position is not None:
+                print("Quantity           :", position["quantity"])
+                print("Remaining Quantity :", position["remaining_quantity"])
+
+            if result is not None:
+
+                action = row["signal"]
+
+                #
+                # Partial Exit
+                #
+
+                if not result["close_position"]:
+
+                    sell_quantity = result["sell_quantity"]
+
+                    partial_profit = (
+
+                        result["exit_price"]
+
+                        - position["entry_price"]
+
+                    ) * sell_quantity
+
+                    position["remaining_quantity"] -= sell_quantity
+
+                    position["realized_profit"] += partial_profit
+
+                    position["events"].append({
+
+                        "type": result["exit_reason"],
+
+                        "date": row["date"],
+
+                        "price": result["exit_price"],
+
+                        "quantity": sell_quantity,
+
+                        "profit": round(partial_profit, 2)
+
+                    })
+
+                    row_position = position
+
+                #
+                # Final Exit
+                #
+
+                else:
+
+                    sell_quantity = result["sell_quantity"]
+
+                    final_profit = (
+
+                        result["exit_price"]
+
+                        - position["entry_price"]
+
+                    ) * sell_quantity
+
+                    position["realized_profit"] += final_profit
+
+                    position["events"].append({
+
+                        "type": "SELL",
+
+                        "date": row["date"],
+
+                        "price": result["exit_price"],
+
+                        "quantity": sell_quantity,
+
+                        "profit": round(final_profit, 2)
+
+                    })
+
+                    position["remaining_quantity"] = 0
+
+                    trades.append(
+
+                        self._build_trade_record(
+
+                            position,
+
+                            row,
+
+                            result["exit_price"],
+
+                            result["exit_reason"]
+
+                        )
+
+                    )
+
+                    row_position = position
+
+                    position = None
 
             positions.append(
                 self._build_position_row(

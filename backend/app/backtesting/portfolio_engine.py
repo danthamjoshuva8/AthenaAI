@@ -249,7 +249,7 @@ class PortfolioEngine:
 
         return obj
 
-    async def execute_portfolio(
+    def execute_portfolio(
         self,
         db: Session,
         symbols: list
@@ -751,13 +751,13 @@ class PortfolioEngine:
 
         return cleaned_result
     
-    async def portfolio_summary(
+    def portfolio_summary(
         self,
         db: Session,
         symbols: list
     ):
 
-        portfolio = await self.execute_portfolio(
+        portfolio = self.execute_portfolio(
             db,
             symbols
         )

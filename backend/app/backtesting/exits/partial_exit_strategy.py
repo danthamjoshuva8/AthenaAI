@@ -3,51 +3,61 @@ from app.backtesting.exits.exit_strategy import ExitStrategy
 
 class PartialExitStrategy(ExitStrategy):
 
-    def process(
-        self,
-        position,
-        row
-    ):
+    def process(self, position, row):
 
-        if row["signal"] == "PARTIAL_EXIT":
+        #
+        # First 50% at 2R
+        #
 
-            if not position["partial_exit_2r"]:
+        if (
+            not position["partial_exit_2r"]
+            and row["high"] >= position["target_2r"]
+        ):
 
-                return {
+            position["partial_exit_2r"] = True
 
-                    "close_position": False,
+            return {
 
-                    "sell_quantity":
-                        position["remaining_quantity"] // 2,
+                "close_position": False,
 
-                    "exit_price":
-                        row["exit_price"],
+                "sell_quantity": max(
+                    1,
+                    round(position["quantity"] * 0.5)
+                ),
 
-                    "exit_reason":
-                        row["exit_reason"],
+                "exit_price": position["target_2r"],
 
-                    "target": "2R"
+                "exit_reason": "TARGET_2R"
 
-                }
+            }
 
-            elif not position["partial_exit_3r"]:
+        #
+        # Remaining 50% at 3R
+        #
 
-                return {
+        if (
+            position["partial_exit_2r"]
+            and not position["partial_exit_3r"]
+            and row["high"] >= position["target_3r"]
+        ):
 
-                    "close_position": False,
+            position["partial_exit_3r"] = True
 
-                    "sell_quantity":
-                        position["remaining_quantity"] // 2,
+            return {
 
-                    "exit_price":
-                        row["exit_price"],
+                "close_position": True,
 
-                    "exit_reason":
-                        row["exit_reason"],
+                "sell_quantity": position["remaining_quantity"],
 
-                    "target": "3R"
+                "exit_price": position["target_3r"],
 
-                }
+                "exit_reason": "TARGET_3R"
+
+            }
+
+        #
+        # MA Exit
+        #
 
         if row["signal"] == "SELL":
 
@@ -55,14 +65,11 @@ class PartialExitStrategy(ExitStrategy):
 
                 "close_position": True,
 
-                "sell_quantity":
-                    position["remaining_quantity"],
+                "sell_quantity": position["remaining_quantity"],
 
-                "exit_price":
-                    row["exit_price"],
+                "exit_price": row["close"],
 
-                "exit_reason":
-                    row["exit_reason"]
+                "exit_reason": "SHORT_MA_BREAK"
 
             }
 
