@@ -1,38 +1,21 @@
-version: "3.9"
 
 services:
-
-  postgres:
-    image: postgres:16
-
-    container_name: athena-postgres
-
-    restart: always
-
-    environment:
-      POSTGRES_USER: athena
-      POSTGRES_PASSWORD: athena123
-      POSTGRES_DB: athena_db
-
-    ports:
-      - "5432:5432"
-
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
   backend:
-    build: ./backend
-
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: athena-backend
-
+    restart: unless-stopped
     ports:
       - "8000:8000"
-
-    depends_on:
-      - postgres
-
     env_file:
       - .env
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - athena-network
 
-volumes:
-  postgres_data:
+networks:
+  athena-network:
+    external: true
+    name: athenaai_default

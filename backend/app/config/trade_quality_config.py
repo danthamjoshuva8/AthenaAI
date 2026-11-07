@@ -57,6 +57,9 @@ class MarketContextConfig:
     momentum_medium = 5
     momentum_strong = 8
 
+    momentum_period = 20
+    atr_period = 20
+
 @dataclass
 class TradeQualityConfig:
 
@@ -105,7 +108,7 @@ class TradeQualityConfig:
 
     volume_confirmation = TradeQualityModuleConfig(
         enabled=True,
-        weight=5
+        weight=15
     )
 
     sector = TradeQualityModuleConfig(

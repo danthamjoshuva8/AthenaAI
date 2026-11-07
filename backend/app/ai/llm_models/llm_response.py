@@ -1,4 +1,3 @@
-from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -9,16 +8,16 @@ class LLMResponse(BaseModel):
 
     reasoning: str
 
-    risks: List[str] = []
+    risks: list[str] = []
 
-    strengths: List[str] = []
+    strengths: list[str] = []
 
-    weaknesses: List[str] = []
+    weaknesses: list[str] = []
 
-    recommendation: Optional[str] = None
+    recommendation: str | None = None
 
-    news_impact: Optional[str] = None
+    news_impact: str | None = None
 
-    fundamental_view: Optional[str] = None
+    fundamental_view: str | None = None
 
-    execution_priority: Optional[str] = None
+    execution_priority: str | None = None

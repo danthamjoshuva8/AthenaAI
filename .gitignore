@@ -1,76 +1,33 @@
-# =========================
 # Python
-# =========================
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
 *.egg-info/
-.venv/
-venv/
-env/
 
-# =========================
-# Environment Variables
-# =========================
-.env
-.env.*
+# Ruff
+.ruff_cache/
 
-# =========================
-# Logs
-# =========================
-logs/
-*.log
+# Pytest
+.pytest_cache/
 
-# =========================
-# Database
-# =========================
-*.db
-*.sqlite3
-postgres_data/
-
-# =========================
-# Node / React
-# =========================
-node_modules/
-npm-debug.log*
-yarn-error.log*
-
-# =========================
-# Build Files
-# =========================
-build/
-dist/
-
-# =========================
 # VS Code
-# =========================
 .vscode/
 
-# Keep shared VS Code settings if needed later
-!.vscode/extensions.json
-!.vscode/settings.json
+# Environment
+.env
 
-# =========================
-# OS Files
-# =========================
-.DS_Store
-Thumbs.db
+# Logs
+logs/
 
-# =========================
-# Docker
-# =========================
-docker-volumes/
+# Cache
+cache/
 
-# =========================
-# Testing
-# =========================
+# Reports
+reports/
+
+# Coverage
 .coverage
-.pytest_cache/
 htmlcov/
 
-# =========================
-# Misc
-# =========================
-*.tmp
-*.bak
+# OS
+.DS_Store
+Thumbs.db

@@ -1,26 +1,33 @@
+
 from datetime import date
+
 from pydantic import BaseModel
 
 
 class MarketDataResponse(BaseModel):
+    """
+    Defines the API response structure for historical market data.
+    """
 
-    symbol: str
+    symbol: str       # Stock or market index trading symbol.
+    date: date        # Trading date of the market data.
 
-    date: date
+    open: float       # Opening price for the trading session.
+    high: float       # Highest price during the trading session.
+    low: float        # Lowest price during the trading session.
+    close: float      # Closing price for the trading session.
 
-    open: float
-
-    high: float
-
-    low: float
-
-    close: float
-
-    volume: float
+    volume: float     # Total trading volume during the session.
 
     class Config:
+        """Enables model creation from ORM object attributes."""
 
         from_attributes = True
 
+
 class HistoryLoadRequest(BaseModel):
-    years: int = 5
+    """
+    Defines the API request parameters for loading historical market data.
+    """
+
+    years: int = 5    # Number of years of historical data to load.

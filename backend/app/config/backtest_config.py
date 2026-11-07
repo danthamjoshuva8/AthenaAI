@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
-from app.models.strategy_parameters import StrategyParameters
 from enum import Enum
+
+from app.models.strategy_parameters import StrategyParameters
 
 
 class ExitStrategyType(str, Enum):
@@ -27,7 +28,7 @@ class StopMoveType(str, Enum):
     TWO_R = "2r"
 
 @dataclass
-class BacktestConfig : #
+class BacktestConfig :
     # Capital
     #
 

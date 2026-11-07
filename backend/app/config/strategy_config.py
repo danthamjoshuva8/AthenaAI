@@ -41,3 +41,5 @@ class StrategyConfig:
     #
 
     breakout_wait = 5
+
+    min_trade_score = 60
