@@ -24,9 +24,22 @@ class StrategyService:
         """Calculates moving averages for the specified stock."""
         return self.engine.calculate_ma(db, symbol)
 
-    def generate_signals(self, db: Session, symbol: str):
-        """Generates trading signals using the configured strategy."""
-        return self.engine.generate_signals(db, symbol)
+    
+    def generate_signals(
+        self,
+        db: Session,
+        symbol: str,
+        start_date=None,
+        end_date=None
+    ):
+
+        return self.engine.generate_signals(
+            db,
+            symbol,
+            start_date=start_date,
+            end_date=end_date
+        )
+
 
     def latest_signal(self, db: Session, symbol: str):
         """Retrieves the latest trading signal for the specified stock."""

@@ -69,25 +69,22 @@ class StrategyEngine:
             symbol
         )
 
+    
     def generate_signals(
         self,
         db: Session,
-        symbol: str
+        symbol: str,
+        start_date=None,
+        end_date=None
     ):
-        """
-        Generate trading signals for a stock.
 
-        Args:
-            db: SQLAlchemy database session.
-            symbol: Stock symbol to process.
-
-        Returns:
-            List of generated trading signals.
-        """
         return self.strategy.generate_signals(
             db,
-            symbol
+            symbol,
+            start_date=start_date,
+            end_date=end_date
         )
+
 
     def latest_signal(
         self,

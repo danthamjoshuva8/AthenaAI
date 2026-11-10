@@ -8,6 +8,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.database.base import Base
 from app.database.session import engine
+from app.forward_testing.storage import (
+    PaperOrder,
+    PaperPosition,
+    PaperPositionEvent,
+)
 
 
 # ---------------------------------------------------------------------

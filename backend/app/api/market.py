@@ -374,3 +374,53 @@ def load_stock_master(
         func=execute,
         universe="NIFTY200",
     )
+
+
+@router.post(
+    "/daily-update",
+    summary="Update All Daily Market Data",
+    description=(
+        "Orchestrates updates for Nifty 200 stock history, "
+        "Nifty 50 history, sector history, and stock master."
+    ),
+)
+def daily_market_update(
+    stock_years: int = 5,
+    index_years: int = 7,
+    sector_years: int = 7,
+    db: Session = Depends(get_db),
+):
+    """Update all required market data through the market service."""
+
+    def execute():
+        symbols = load_nifty200_symbols()
+
+        if not symbols:
+            raise ValueError("Nifty 200 symbol universe is empty.")
+
+        logger.info(
+            "Nifty 200 symbols loaded for daily market update",
+            extra={
+                "event": "daily_market_symbols_loaded",
+                "service": "market_data",
+                "symbol_count": len(symbols),
+                "universe": "NIFTY200",
+            },
+        )
+
+        return service.load_daily_market_data(
+            db=db,
+            symbols=symbols,
+            stock_years=stock_years,
+            index_years=index_years,
+            sector_years=sector_years,
+        )
+
+    return run_market_operation(
+        operation="daily_market_data_update",
+        func=execute,
+        stock_years=stock_years,
+        index_years=index_years,
+        sector_years=sector_years,
+        universe="NIFTY200",
+    )

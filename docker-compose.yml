@@ -15,6 +15,23 @@ services:
     networks:
       - athena-network
 
+  scheduler:
+    build:
+      context: ./scheduler
+      dockerfile: Dockerfile
+
+    container_name: athena-scheduler
+
+    environment:
+      BACKEND_URL: http://backend:8000
+      TZ: Asia/Kolkata
+
+    depends_on:
+      backend:
+        condition: service_started
+
+    restart: unless-stopped
+
 networks:
   athena-network:
     external: true

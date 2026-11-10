@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, time
 
 import pandas as pd
 import yfinance as yf
@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session
 import logging
 from app.core.cache import cache_manager
 from sqlalchemy.exc import SQLAlchemyError
+from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -63,19 +66,19 @@ class MarketEngine:
         # Step 4: Return the service status.
         return response
 
-
     def download_history(
         self,
         symbol: str,
         period: str = "1y",
-        interval: str = "1d"
+        interval: str = "1d",
+        start: date = None,
+        end: date = None
     ) -> list[dict]:
         """
         Download historical OHLCV data with Redis caching.
 
-        Retrieves historical market data from Yahoo Finance.
-        Redis is checked first to avoid unnecessary external
-        API requests for previously downloaded data.
+        Supports period-based downloads for initial history loading
+        and date-based downloads for incremental market data updates.
 
         Execution Steps:
             1. Validate the stock symbol and download parameters.
@@ -92,6 +95,8 @@ class MarketEngine:
             symbol: Yahoo Finance stock symbol, e.g. RELIANCE.NS.
             period: Historical data period, e.g. 1y or 5y.
             interval: Candle interval, e.g. 1d or 1h.
+            start: Inclusive start date for incremental downloads.
+            end: Exclusive end date for incremental downloads.
 
         Returns:
             list[dict]: Historical OHLCV records.
@@ -103,24 +108,38 @@ class MarketEngine:
         Notes:
             Redis failures do not prevent downloading market data.
             Cached data is temporary and expires according to TTL.
+            Date-based downloads take precedence over period-based downloads.
         """
 
         # Step 1: Validate input parameters.
         if not symbol or not symbol.strip():
             raise ValueError("Stock symbol cannot be empty")
 
-        if not period or not interval:
-            raise ValueError("Period and interval are required")
+        if not interval:
+            raise ValueError("Interval is required")
+
+        if start is not None and end is not None and start >= end:
+            raise ValueError("Start date must be earlier than end date")
+
+        if (start is None) != (end is None):
+            raise ValueError("Both start and end dates are required")
+
+        if start is None and not period:
+            raise ValueError("Period is required for historical downloads")
 
         symbol = symbol.strip().upper()
 
         # Step 2: Generate a unique cache key.
-        # Different symbols, periods and intervals must have
-        # separate cache entries.
-        cache_key = (
-            f"athena:market:history:"
-            f"{symbol}:{period}:{interval}:v1"
-        )
+        if start is not None and end is not None:
+            cache_key = (
+                f"athena:market:history:"
+                f"{symbol}:{start}:{end}:{interval}:v2"
+            )
+        else:
+            cache_key = (
+                f"athena:market:history:"
+                f"{symbol}:{period}:{interval}:v1"
+            )
 
         # Step 3: Check Redis for existing market history.
         cached_data = cache_manager.get_json(cache_key)
@@ -133,7 +152,9 @@ class MarketEngine:
                 extra={
                     "event": "market_history_cache_hit",
                     "symbol": symbol,
-                    "period": period,
+                    "period": period if start is None else None,
+                    "start": start.isoformat() if start else None,
+                    "end": end.isoformat() if end else None,
                     "interval": interval,
                     "cache_status": "HIT"
                 }
@@ -147,7 +168,9 @@ class MarketEngine:
             extra={
                 "event": "market_history_download_started",
                 "symbol": symbol,
-                "period": period,
+                "period": period if start is None else None,
+                "start": start.isoformat() if start else None,
+                "end": end.isoformat() if end else None,
                 "interval": interval,
                 "cache_status": "MISS"
             }
@@ -159,9 +182,28 @@ class MarketEngine:
             ticker = yf.Ticker(symbol)
 
             # Step 7: Download historical OHLCV data.
-            df = ticker.history(
-                period=period,
-                interval=interval
+            if start is not None and end is not None:
+                df = ticker.history(
+                    start=start.isoformat(),
+                    end=end.isoformat(),
+                    interval=interval
+                )
+            else:
+                df = ticker.history(
+                    period=period,
+                    interval=interval
+                )
+
+            logger.info(
+                "Yahoo Finance raw history dates",
+                extra={
+                    "symbol": symbol,
+                    "index": [
+                        str(value)
+                        for value in df.index[-5:]
+                    ],
+                    "timezone": str(df.index.tz)
+                }
             )
 
             # Step 8: Check whether data was returned.
@@ -172,7 +214,9 @@ class MarketEngine:
                     extra={
                         "event": "market_history_empty",
                         "symbol": symbol,
-                        "period": period,
+                        "period": period if start is None else None,
+                        "start": start.isoformat() if start else None,
+                        "end": end.isoformat() if end else None,
                         "interval": interval
                     }
                 )
@@ -204,7 +248,9 @@ class MarketEngine:
                 extra={
                     "event": "market_history_download_success",
                     "symbol": symbol,
-                    "period": period,
+                    "period": period if start is None else None,
+                    "start": start.isoformat() if start else None,
+                    "end": end.isoformat() if end else None,
                     "interval": interval,
                     "records_count": len(records),
                     "cache_status": "MISS"
@@ -222,7 +268,9 @@ class MarketEngine:
                 extra={
                     "event": "market_history_download_failed",
                     "symbol": symbol,
-                    "period": period,
+                    "period": period if start is None else None,
+                    "start": start.isoformat() if start else None,
+                    "end": end.isoformat() if end else None,
                     "interval": interval
                 }
             )
@@ -902,7 +950,6 @@ class MarketEngine:
                 "Failed to load historical market data."
             ) from exc
     
-    
     def _prepare_history_dataframe(
         self,
         history: pd.DataFrame | list[dict]
@@ -914,13 +961,17 @@ class MarketEngine:
             1. Convert list-based historical data into a DataFrame.
             2. Move the Date column into the DataFrame index when available.
             3. Convert the index into datetime values.
-            4. Return the normalized DataFrame.
+            4. Normalize timezone-aware dates to Asia/Kolkata.
+            5. Remove invalid dates.
+            6. Exclude the current trading day's incomplete candle
+            until 4:00 PM IST.
+            7. Return the normalized DataFrame.
 
         Args:
             history: Downloaded historical data as a DataFrame or list.
 
         Returns:
-            Normalized DataFrame with a datetime index.
+            Normalized DataFrame with a timezone-naive datetime index.
         """
 
         if isinstance(history, pd.DataFrame):
@@ -931,14 +982,39 @@ class MarketEngine:
         if df.empty:
             return df
 
-        # Use the Date column as the index when download_history returns records.
+        # Use the Date column as the index when available.
         if "Date" in df.columns:
             df = df.set_index("Date")
 
-        # Ensure the index supports datetime operations.
-        df.index = pd.to_datetime(df.index)
+        # Convert index to datetime.
+        df.index = pd.to_datetime(df.index, errors="coerce")
+
+        # Remove invalid dates.
+        df = df[~df.index.isna()]
+
+        if df.empty:
+            return df
+
+        # Normalize timezone-aware timestamps to Indian Standard Time.
+        if df.index.tz is not None:
+            df.index = (
+                df.index
+                .tz_convert("Asia/Kolkata")
+                .tz_localize(None)
+            )
+
+        # Exclude today's incomplete candle before 4 PM IST.
+        india_now = datetime.now(
+            ZoneInfo("Asia/Kolkata")
+        )
+
+        if india_now.time() < time(16, 0):
+            today = pd.Timestamp(india_now.date())
+
+            df = df[df.index.normalize() < today]
 
         return df
+        
     
     def load_nifty200_history(
         self,
@@ -947,32 +1023,14 @@ class MarketEngine:
         years: int = 5
     ) -> dict[str, int]:
         """
-        Load or update historical data for multiple stock symbols.
+        Load initial historical data or incrementally update market data.
 
-        Execution Steps:
-            1. Validate the symbols and historical period.
-            2. Process each stock symbol individually.
-            3. Check the latest available database date.
-            4. Download five-year history for new symbols or one month
-            of history for existing symbols.
-            5. Normalize the downloaded data.
-            6. Identify existing records and update them.
-            7. Insert new records.
-            8. Commit each symbol separately.
-            9. Roll back failed symbols and continue processing.
-            10. Return the final loading statistics.
+        New symbols receive the configured historical period.
+        Existing symbols download only from their latest database
+        date through the current date.
 
-        Args:
-            db: Active SQLAlchemy database session.
-            symbols: List of stock symbols to process.
-            years: Historical period for new symbols.
-
-        Returns:
-            Dictionary containing symbols, processed, inserted,
-            updated and failed counts.
-
-        Raises:
-            ValueError: If symbols are empty or years is invalid.
+        Weekend and future-dated records are rejected.
+        The latest stored candle is downloaded again to allow corrections.
         """
 
         if not symbols:
@@ -981,7 +1039,6 @@ class MarketEngine:
         if not isinstance(years, int) or isinstance(years, bool) or years <= 0:
             raise ValueError("Years must be a positive integer.")
 
-        # Normalize and remove duplicate symbols.
         normalized_symbols = list(dict.fromkeys(
             symbol.strip().upper()
             for symbol in symbols
@@ -995,15 +1052,23 @@ class MarketEngine:
         inserted = 0
         updated = 0
         failed = 0
+        rejected_records = 0
 
         total_symbols = len(normalized_symbols)
 
+        today = datetime.now(
+            ZoneInfo("Asia/Kolkata")
+        ).date()
+
+        end_date = today + timedelta(days=1)
+
         logger.info(
-            "Starting NIFTY 200 historical data loading.",
+            "Starting incremental NIFTY 200 market data loading.",
             extra={
                 "event": "load_nifty200_started",
                 "symbols_count": total_symbols,
-                "period": f"{years}y"
+                "historical_years": years,
+                "end_date": end_date.isoformat()
             }
         )
 
@@ -1011,37 +1076,41 @@ class MarketEngine:
 
             processed += 1
 
-            logger.info(
-                "Processing stock historical data.",
-                extra={
-                    "event": "load_nifty200_symbol_started",
-                    "symbol": symbol,
-                    "processed": processed,
-                    "symbols_count": total_symbols
-                }
-            )
-
-            # Keep temporary counters until the symbol transaction commits.
             symbol_inserted = 0
             symbol_updated = 0
 
             try:
                 # Step 1: Find the latest available database date.
+                # Step 1: Find the latest valid trading date in the database.
                 latest_date = (
                     db.query(func.max(MarketData.date))
-                    .filter(MarketData.symbol == symbol)
+                    .filter(
+                        MarketData.symbol == symbol,
+                        func.extract("isodow", MarketData.date).between(1, 5),
+                        MarketData.date <= today
+                    )
                     .scalar()
                 )
 
-                # Step 2: Select the download period.
-                period = f"{years}y" if latest_date is None else "1mo"
+                # Step 2: Download initial or incremental history.
+                if latest_date is None:
 
-                # Step 3: Download historical data.
-                history = self.download_history(
-                    symbol=symbol,
-                    period=period
-                )
+                    history = self.download_history(
+                        symbol=symbol,
+                        period=f"{years}y",
+                        interval="1d"
+                    )
 
+                else:
+
+                    history = self.download_history(
+                        symbol=symbol,
+                        start=latest_date,
+                        end=end_date,
+                        interval="1d"
+                    )
+
+                # Step 3: Normalize downloaded market data.
                 df = self._prepare_history_dataframe(history)
 
                 if df.empty:
@@ -1054,13 +1123,43 @@ class MarketEngine:
                     )
                     continue
 
-                # Step 4: Convert downloaded dates into Python dates.
+                # Step 4: Reject weekends and future-dated records.
+                valid_mask = [
+                    timestamp.dayofweek < 5
+                    and timestamp.date() <= today
+                    for timestamp in df.index
+                ]
+
+                rejected_dates = [
+                    timestamp.isoformat()
+                    for timestamp, is_valid in zip(df.index, valid_mask)
+                    if not is_valid
+                ]
+
+                rejected_records += len(rejected_dates)
+
+                if rejected_dates:
+                    logger.warning(
+                        "Rejected invalid market data dates.",
+                        extra={
+                            "event": "load_nifty200_invalid_dates",
+                            "symbol": symbol,
+                            "rejected_dates": rejected_dates
+                        }
+                    )
+
+                df = df.loc[valid_mask].copy()
+
+                if df.empty:
+                    continue
+
+                # Step 5: Convert downloaded dates into Python dates.
                 trade_dates = [
                     pd.Timestamp(index).date()
                     for index in df.index
                 ]
 
-                # Step 5: Retrieve existing records in one query.
+                # Step 6: Retrieve existing records in one query.
                 existing_records = (
                     db.query(MarketData)
                     .filter(
@@ -1075,7 +1174,7 @@ class MarketEngine:
                     for record in existing_records
                 }
 
-                # Step 6: Insert new records or update existing records.
+                # Step 7: Insert missing candles or update existing candles.
                 for index, row in df.iterrows():
 
                     trade_date = pd.Timestamp(index).date()
@@ -1108,15 +1207,14 @@ class MarketEngine:
 
                         symbol_inserted += 1
 
-                # Step 7: Commit this symbol's transaction.
+                # Step 8: Commit this symbol's transaction.
                 db.commit()
 
-                # Update global counters only after successful commit.
                 inserted += symbol_inserted
                 updated += symbol_updated
 
                 logger.info(
-                    "Stock historical data processed successfully.",
+                    "Stock market data processed successfully.",
                     extra={
                         "event": "load_nifty200_symbol_completed",
                         "symbol": symbol,
@@ -1127,43 +1225,40 @@ class MarketEngine:
 
             except Exception:
 
-                # Roll back only the failed symbol's pending transaction.
                 db.rollback()
-
                 failed += 1
 
                 logger.exception(
-                    "Failed to load historical data for stock.",
+                    "Failed to load market data for stock.",
                     extra={
                         "event": "load_nifty200_symbol_failed",
                         "symbol": symbol
                     }
                 )
 
-                continue
-
-        # Step 8: Prepare final loading statistics.
         result = {
             "symbols": total_symbols,
             "processed": processed,
             "inserted": inserted,
             "updated": updated,
-            "failed": failed
+            "failed": failed,
+            "rejected_records": rejected_records
         }
 
         logger.info(
-            "NIFTY 200 historical data loading completed.",
+            "NIFTY 200 incremental market data loading completed.",
             extra={
                 "event": "load_nifty200_completed",
                 "symbols_count": total_symbols,
                 "records_inserted": inserted,
                 "records_updated": updated,
+                "rejected_records": rejected_records,
                 "failed_symbols": failed
             }
         )
 
         return result
-    
+
     
     def clear_market_data(
         self,
@@ -1346,85 +1441,88 @@ class MarketEngine:
                 "Failed to retrieve NIFTY 50 market context data."
             ) from exc
         
-    
-    def load_nifty_index_history(
+
+    def _load_index_history_incremental(
         self,
         db: Session,
-        years: int = 7
+        symbol: str,
+        yahoo_symbol: str,
+        years: int
     ) -> dict[str, int | str]:
-        """
-        Load or update historical NIFTY 50 index data.
-
-        Execution Steps:
-            1. Validate the historical period.
-            2. Download NIFTY 50 index history.
-            3. Normalize the downloaded data.
-            4. Retrieve existing NIFTY50 records for downloaded dates.
-            5. Update existing records.
-            6. Insert missing records.
-            7. Commit the database transaction.
-            8. Log the loading statistics.
-            9. Return the loading summary.
-
-        Args:
-            db: Active SQLAlchemy database session.
-            years: Number of historical years to download.
-
-        Returns:
-            Dictionary containing symbol, inserted, updated and total_rows.
-
-        Raises:
-            ValueError: If years is invalid.
-            RuntimeError: If downloading or database operations fail.
-        """
+        """Load full history once, then update only recent history."""
 
         if not isinstance(years, int) or isinstance(years, bool) or years <= 0:
             raise ValueError("Years must be a positive integer.")
 
-        symbol = "NIFTY50"
-
-        logger.info(
-            "Starting NIFTY 50 index history loading.",
-            extra={
-                "event": "nifty_index_history_started",
-                "symbol": symbol,
-                "period": f"{years}y"
-            }
-        )
-
         try:
-            # Step 1: Download NIFTY 50 index history.
-            history = self.download_history(
-                symbol="^NSEI",
-                period=f"{years}y"
+            # 1. Find the latest valid stored trading date.
+            latest_date = (
+                db.query(func.max(MarketData.date))
+                .filter(
+                    MarketData.symbol == symbol,
+                    func.extract("isodow", MarketData.date).between(1, 5)
+                )
+                .scalar()
             )
 
-            # Step 2: Normalize downloaded data.
+            # 2. Full download for new symbols; incremental download otherwise.
+            period = f"{years}y" if latest_date is None else "1mo"
+
+            logger.info(
+                "Starting incremental index history loading.",
+                extra={
+                    "event": "index_history_started",
+                    "symbol": symbol,
+                    "yahoo_symbol": yahoo_symbol,
+                    "latest_date": str(latest_date),
+                    "period": period
+                }
+            )
+
+            # 3. Download history using the existing Redis-enabled method.
+            history = self.download_history(
+                symbol=yahoo_symbol,
+                period=period
+            )
+
             df = self._prepare_history_dataframe(history)
 
             if df.empty:
-                logger.warning(
-                    "No NIFTY 50 index history received.",
-                    extra={
-                        "event": "nifty_index_history_empty",
-                        "symbol": symbol
-                    }
-                )
-
                 return {
                     "symbol": symbol,
                     "inserted": 0,
                     "updated": 0,
-                    "total_rows": 0
+                    "total_rows": 0,
+                    "status": "NO_DATA"
                 }
 
-            # Step 3: Extract downloaded trading dates.
-            trade_dates = [
-                pd.Timestamp(index).date()
-                for index in df.index
-            ]
+            # 4. Keep weekdays only and reject future dates.
+            today = datetime.now(
+                __import__("zoneinfo").ZoneInfo("Asia/Kolkata")
+            ).date()
 
-            # Step 4: Retrieve existing records in one query.
+            valid_rows = []
+
+            for index, row in df.iterrows():
+                trade_date = pd.Timestamp(index).date()
+
+                if trade_date.weekday() >= 5 or trade_date > today:
+                    continue
+
+                valid_rows.append((trade_date, row))
+
+            if not valid_rows:
+                return {
+                    "symbol": symbol,
+                    "inserted": 0,
+                    "updated": 0,
+                    "total_rows": 0,
+                    "status": "NO_VALID_DATA"
+                }
+
+            # 5. Fetch existing records for downloaded dates.
+            trade_dates = [trade_date for trade_date, _ in valid_rows]
+
             existing_records = (
                 db.query(MarketData)
                 .filter(
@@ -1442,25 +1540,18 @@ class MarketEngine:
             inserted = 0
             updated = 0
 
-            # Step 5: Insert or update NIFTY 50 records.
-            for index, row in df.iterrows():
-
-                trade_date = pd.Timestamp(index).date()
-
+            # 6. Insert missing candles and update existing candles.
+            for trade_date, row in valid_rows:
                 existing = existing_map.get(trade_date)
 
                 if existing:
-
                     existing.open = float(row["Open"])
                     existing.high = float(row["High"])
                     existing.low = float(row["Low"])
                     existing.close = float(row["Close"])
                     existing.volume = float(row["Volume"])
-
                     updated += 1
-
                 else:
-
                     db.add(
                         MarketData(
                             symbol=symbol,
@@ -1472,49 +1563,57 @@ class MarketEngine:
                             volume=float(row["Volume"])
                         )
                     )
-
                     inserted += 1
 
-            # Step 6: Commit all NIFTY 50 changes.
+            # 7. Commit database changes.
             db.commit()
 
             result = {
                 "symbol": symbol,
                 "inserted": inserted,
                 "updated": updated,
-                "total_rows": len(df)
+                "total_rows": len(valid_rows),
+                "status": "SUCCESS"
             }
 
             logger.info(
-                "NIFTY 50 index history loaded successfully.",
+                "Incremental index history loading completed.",
                 extra={
-                    "event": "nifty_index_history_completed",
-                    "symbol": symbol,
-                    "records_inserted": inserted,
-                    "records_updated": updated,
-                    "records_count": len(df)
+                    "event": "index_history_completed",
+                    **result
                 }
             )
 
             return result
 
-        except Exception as exc:
-
-            # Step 7: Roll back failed database operations.
+        except Exception:
             db.rollback()
 
             logger.exception(
-                "Failed to load NIFTY 50 index history.",
+                "Incremental index history loading failed.",
                 extra={
-                    "event": "nifty_index_history_failed",
+                    "event": "index_history_failed",
                     "symbol": symbol
                 }
             )
 
-            raise RuntimeError(
-                "Failed to load NIFTY 50 index history."
-            ) from exc
+            raise
+
     
+    def load_nifty_index_history(
+        self,
+        db: Session,
+        years: int = 7
+    ) -> dict[str, int | str]:
+        """Load or incrementally update NIFTY 50 history."""
+
+        return self._load_index_history_incremental(
+            db=db,
+            symbol="NIFTY50",
+            yahoo_symbol="^NSEI",
+            years=years
+        )
+
     
     def get_nifty_history(
         self,
@@ -1779,7 +1878,7 @@ class MarketEngine:
             raise RuntimeError(
                 "Failed to prepare NIFTY market context."
             ) from exc
-    
+
     
     def load_sector_history(
         self,
@@ -1787,177 +1886,164 @@ class MarketEngine:
         sector: Sector,
         years: int = 7
     ) -> dict[str, int | str]:
-        """
-        Load or update historical data for a sector index.
-
-        Execution Steps:
-            1. Validate the historical period.
-            2. Retrieve the Yahoo Finance ticker from the sector mapping.
-            3. Download sector index historical data.
-            4. Normalize the downloaded data.
-            5. Retrieve existing sector records for downloaded dates.
-            6. Update existing records.
-            7. Insert missing records.
-            8. Commit the database transaction.
-            9. Log the loading statistics.
-            10. Return the loading summary.
-
-        Args:
-            db: Active SQLAlchemy database session.
-            sector: Sector enum identifying the sector index.
-            years: Number of historical years to download.
-
-        Returns:
-            Dictionary containing symbol, inserted, updated and total_rows.
-
-        Raises:
-            ValueError: If the historical period or sector mapping is invalid.
-            RuntimeError: If downloading or database operations fail.
-        """
-
-        if not isinstance(years, int) or isinstance(years, bool) or years <= 0:
-            raise ValueError("Years must be a positive integer.")
+        """Load or incrementally update sector index history."""
 
         try:
-            # Step 1: Resolve the Yahoo Finance ticker and database symbol.
             yahoo_symbol = SECTOR_INDEX_SYMBOLS[sector]
-            symbol = sector.value
-
-        except (KeyError, TypeError, AttributeError) as exc:
+        except (KeyError, TypeError) as exc:
             raise ValueError(
                 f"Invalid or unsupported sector: {sector}"
             ) from exc
 
+        return self._load_index_history_incremental(
+            db=db,
+            symbol=sector.value,
+            yahoo_symbol=yahoo_symbol,
+            years=years
+        )
+
+    
+    def load_daily_market_data(
+        self,
+        db: Session,
+        symbols: list[str],
+        stock_years: int = 5,
+        index_years: int = 7,
+        sector_years: int = 7
+    ) -> dict:
+        """
+        Orchestrate daily loading of all market reference and price data.
+
+        Execution order:
+            1. Update stock master.
+            2. Update NIFTY 200 historical data.
+            3. Update NIFTY 50 historical data.
+            4. Update all configured sector historical data.
+
+        Existing loader methods handle initial and incremental downloads.
+        """
+
+        if not symbols:
+            raise ValueError("NIFTY 200 symbols cannot be empty.")
+
+        results = {
+            "status": "IN_PROGRESS",
+            "stock_master": None,
+            "nifty200": None,
+            "nifty50": None,
+            "sectors": {}
+        }
+
         logger.info(
-            "Starting sector historical data loading.",
+            "Daily market data orchestration started.",
             extra={
-                "event": "load_sector_history_started",
-                "symbol": symbol,
-                "period": f"{years}y"
+                "event": "daily_market_data_started",
+                "symbols_count": len(symbols)
             }
         )
 
         try:
-            # Step 2: Download historical sector data.
-            history = self.download_history(
-                symbol=yahoo_symbol,
-                period=f"{years}y"
+            # Step 1: Update stock master.
+            logger.info(
+                "Step 1: Loading stock master.",
+                extra={"event": "daily_market_stock_master_started"}
             )
 
-            # Step 3: Normalize downloaded data.
-            df = self._prepare_history_dataframe(history)
-
-            if df.empty:
-                logger.warning(
-                    "No historical data received for sector.",
-                    extra={
-                        "event": "load_sector_history_empty",
-                        "symbol": symbol
-                    }
-                )
-
-                return {
-                    "symbol": symbol,
-                    "inserted": 0,
-                    "updated": 0,
-                    "total_rows": 0
-                }
-
-            # Step 4: Retrieve existing sector records in one query.
-            trade_dates = [
-                pd.Timestamp(index).date()
-                for index in df.index
-            ]
-
-            existing_records = (
-                db.query(MarketData)
-                .filter(
-                    MarketData.symbol == symbol,
-                    MarketData.date.in_(trade_dates)
-                )
-                .all()
+            results["stock_master"] = self.load_stock_master(
+                db=db,
+                symbols=symbols
             )
 
-            existing_map = {
-                record.date: record
-                for record in existing_records
-            }
+            # Step 2: Update NIFTY 200 historical data.
+            logger.info(
+                "Step 2: Loading NIFTY 200 history.",
+                extra={"event": "daily_market_nifty200_started"}
+            )
 
-            inserted = 0
-            updated = 0
+            results["nifty200"] = self.load_nifty200_history(
+                db=db,
+                symbols=symbols,
+                years=stock_years
+            )
 
-            # Step 5: Insert missing records or update existing records.
-            for index, row in df.iterrows():
+            if results["nifty200"]["failed"] > 0:
+                raise RuntimeError(
+                    "NIFTY 200 history loading failed for one or more symbols."
+                )
 
-                trade_date = pd.Timestamp(index).date()
-                existing = existing_map.get(trade_date)
+            # Step 3: Update NIFTY 50 history.
+            logger.info(
+                "Step 3: Loading NIFTY 50 history.",
+                extra={"event": "daily_market_nifty50_started"}
+            )
 
-                if existing:
+            results["nifty50"] = self.load_nifty_index_history(
+                db=db,
+                years=index_years
+            )
 
-                    existing.open = float(row["Open"])
-                    existing.high = float(row["High"])
-                    existing.low = float(row["Low"])
-                    existing.close = float(row["Close"])
-                    existing.volume = float(row["Volume"])
+            if results["nifty50"].get("status") != "SUCCESS":
+                raise RuntimeError(
+                    "NIFTY 50 history loading was unsuccessful."
+                )
 
-                    updated += 1
+            # Step 4: Update all configured sector histories.
+            logger.info(
+                "Step 4: Loading sector histories.",
+                extra={"event": "daily_market_sectors_started"}
+            )
 
+            
+            for sector in SECTOR_INDEX_SYMBOLS:
+                sector_result = self.load_sector_history(
+                    db=db,
+                    sector=sector,
+                    years=sector_years,
+                )
+
+                results["sectors"][sector.value] = sector_result
+
+                # Support both original and incremental loader responses.
+                sector_status = sector_result.get("status")
+
+                if sector_status is not None:
+                    success = sector_status == "SUCCESS"
                 else:
+                    success = sector_result.get("total_rows", 0) > 0
 
-                    db.add(
-                        MarketData(
-                            symbol=symbol,
-                            date=trade_date,
-                            open=float(row["Open"]),
-                            high=float(row["High"]),
-                            low=float(row["Low"]),
-                            close=float(row["Close"]),
-                            volume=float(row["Volume"])
-                        )
+                if not success:
+                    raise RuntimeError(
+                        f"Sector history loading failed: {sector.value}. "
+                        f"Yahoo symbol: {SECTOR_INDEX_SYMBOLS[sector]}. "
+                        f"Loader result: {sector_result}"
                     )
 
-                    inserted += 1
 
-            # Step 6: Commit all sector changes.
-            db.commit()
-
-            result = {
-                "symbol": symbol,
-                "inserted": inserted,
-                "updated": updated,
-                "total_rows": len(df)
-            }
+            # All loading operations completed.
+            results["status"] = "SUCCESS"
 
             logger.info(
-                "Sector historical data loaded successfully.",
+                "Daily market data orchestration completed.",
                 extra={
-                    "event": "load_sector_history_completed",
-                    "symbol": symbol,
-                    "records_inserted": inserted,
-                    "records_updated": updated,
-                    "records_count": len(df)
+                    "event": "daily_market_data_completed",
+                    "status": results["status"]
                 }
             )
 
-            return result
+            return results
 
         except Exception as exc:
-
-            db.rollback()
+            results["status"] = "FAILED"
+            results["error"] = str(exc)
 
             logger.exception(
-                "Failed to load sector historical data.",
+                "Daily market data orchestration failed.",
                 extra={
-                    "event": "load_sector_history_failed",
-                    "symbol": symbol,
-                    "yahoo_symbol": yahoo_symbol
+                    "event": "daily_market_data_failed"
                 }
             )
 
-            raise RuntimeError(
-                f"Failed to load historical data for sector {symbol}."
-            ) from exc
-
+            raise
     
     def get_market_history(
         self,
@@ -2318,3 +2404,18 @@ class MarketEngine:
         )
 
         return result
+
+    def get_latest_completed_session_date(self) -> date:
+        """
+        Returns the latest completed NSE trading date.
+
+        Treats the current session as incomplete until 4 PM IST.
+        """
+
+        india_tz = ZoneInfo("Asia/Kolkata")
+        now = datetime.now(india_tz)
+
+        if now.time() < time(16, 0):
+            return (now.date() - timedelta(days=1))
+
+        return now.date()

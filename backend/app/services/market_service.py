@@ -58,6 +58,28 @@ class MarketService:
         """Loads historical NIFTY 50 index data for the specified period."""
         return self.engine.load_nifty_index_history(db, years)
 
+    
+    def load_daily_market_data(
+        self,
+        db: Session,
+        symbols: list[str],
+        stock_years: int = 5,
+        index_years: int = 7,
+        sector_years: int = 7,
+    ):
+        """
+        Orchestrates daily updates for stock master,
+        Nifty 200, Nifty 50, and sector market data.
+        """
+
+        return self.engine.load_daily_market_data(
+            db=db,
+            symbols=symbols,
+            stock_years=stock_years,
+            index_years=index_years,
+            sector_years=sector_years,
+        )
+
     def test_nifty(self, date: date, db: Session):
         """
         Retrieves and prepares NIFTY historical data for a given date.

@@ -19,6 +19,8 @@ from app.api.database import router as database_router
 from app.api.health import router as health_router
 from app.api.market import router as market_router
 from app.api.strategy import router as strategy_router
+from app.api.forward_testing import router as forward_testing_router
+from app.api import historical_replay
 
 
 # Initialize centralized logging before application startup.
@@ -175,6 +177,8 @@ app.include_router(database_router)
 app.include_router(market_router)
 app.include_router(strategy_router)
 app.include_router(backtest_router)
+app.include_router(forward_testing_router)
+app.include_router(historical_replay.router)
 
 app.include_router(
     trade_selection.router,
